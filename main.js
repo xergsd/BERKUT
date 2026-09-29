@@ -53,12 +53,15 @@ function loop(now) {
   last = now;
   const time = now / 1000;
 
-  const step = game.tick(dt);
+  const step = game.tick(dt, player.boostHeld);
   if (game.state !== 'over') player.update(dt, time, step);
 
   if (game.state === 'playing') {
-    const hit = world.collides(player.pos, CONFIG.eagleRadius);
+    const p = player.pos;
+    game.scoreDistance(step, p.y - height(p.x, p.z));
+    const hit = world.collides(p, CONFIG.eagleRadius);
     if (hit) game.crash(hit);
+    else for (let n = world.nearMisses(p, CONFIG.eagleRadius); n > 0; n--) game.nearMiss();
   } else if (game.state === 'ready') {
     // на стартовом экране не даём беркуту уйти в землю
     player.pos.y = Math.max(player.pos.y, height(player.pos.x, player.pos.z) + 8);

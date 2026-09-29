@@ -87,6 +87,8 @@ export class World {
     r.scale.set(s * 0.8, s * (1.6 + Math.random()), s * 0.8);
     r.position.set(x, height(x, z) + r.scale.y * 0.6, z);
     r.rotation.set(Math.random() * 0.3, Math.random() * 6, Math.random() * 0.3);
+    r.userData.near = false;   // беркут пролетал рядом
+    r.userData.passed = false; // скала уже позади и учтена
   }
 
   reset() {
@@ -127,5 +129,27 @@ export class World {
       if (nx * nx + ny * ny + nz * nz < 1) return 'rock';
     }
     return null;
+  }
+
+  // Сколько скал беркут только что миновал впритирку (в пределах nearMissGap).
+  // Вызывать после collides(), когда столкновения нет.
+  nearMisses(pos, radius) {
+    let n = 0;
+    for (const r of this.rocks) {
+      const u = r.userData, dz = pos.z - r.position.z;
+      if (u.passed || Math.abs(dz) > 40) continue;
+      if (dz < -r.scale.z - radius) { // скала осталась позади
+        u.passed = true;
+        if (u.near) n++;
+        continue;
+      }
+      // эллипсоид скалы, раздутый на величину зазора
+      const g = radius + CONFIG.nearMissGap;
+      const nx = (pos.x - r.position.x) / (r.scale.x + g);
+      const ny = (pos.y - r.position.y) / (r.scale.y + g);
+      const nz = dz / (r.scale.z + g);
+      if (nx * nx + ny * ny + nz * nz < 1) u.near = true;
+    }
+    return n;
   }
 }

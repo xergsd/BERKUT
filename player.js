@@ -12,6 +12,7 @@ export class Player {
     this.pos = new THREE.Vector3();
     this.target = { x: 0, y: 0 }; // -1..1 по обеим осям
     this.keys = new Set();
+    this.touches = 0;
 
     const onPointer = (cx, cy) => {
       this.target.x = (cx / innerWidth - 0.5) * 2;
@@ -19,9 +20,19 @@ export class Player {
     };
     dom.addEventListener('mousemove', (e) => onPointer(e.clientX, e.clientY));
     dom.addEventListener('touchmove', (e) => { const t = e.touches[0]; onPointer(t.clientX, t.clientY); }, { passive: true });
+    const onTouches = (e) => { this.touches = e.touches.length; };
+    dom.addEventListener('touchstart', onTouches, { passive: true });
+    dom.addEventListener('touchend', onTouches, { passive: true });
+    dom.addEventListener('touchcancel', onTouches, { passive: true });
     addEventListener('keydown', (e) => this.keys.add(e.code));
     addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('blur', () => this.keys.clear());
     this.reset();
+  }
+
+  // рывок: Shift или второй палец на экране
+  get boostHeld() {
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.touches >= 2;
   }
 
   reset() {
