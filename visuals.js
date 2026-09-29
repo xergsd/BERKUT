@@ -22,31 +22,160 @@ export const BIOMES = [
 // Возвращает Group, «нос» смотрит в -Z. Внутри wingL / wingR — точки вращения у плеча.
 export function createEagle() {
   const eagle = new THREE.Group();
-  const m = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-  const brown = m('#5a3a24'), gold = m('#c98b3a'), beakM = m('#f2c14e');
+  eagle.name = 'golden-eagle';
+  // Vertex colours let all the feathers share one material: only three draw
+  // calls, one for the body and one for each animated shoulder group.
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const parts = [];
+  const matrix = new THREE.Matrix4();
+  const rotation = new THREE.Quaternion();
+  const colour = new THREE.Color();
+  function add(list, geometry, color, position, scale = [1, 1, 1], angles = [0, 0, 0]) {
+    rotation.setFromEuler(new THREE.Euler(...angles));
+    matrix.compose(new THREE.Vector3(...position), rotation, new THREE.Vector3(...scale));
+    geometry.applyMatrix4(matrix);
+    const g = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (g !== geometry) geometry.dispose();
+    g.computeVertexNormals(); // faceted normals; compatible with Three.js r128
+    colour.set(color);
+    const colors = new Float32Array(g.attributes.position.count * 3);
+    for (let i = 0; i < colors.length; i += 3) {
+      colors[i] = colour.r; colors[i + 1] = colour.g; colors[i + 2] = colour.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    list.push(g);
+  }
+  function finish(list, name) {
+    const geometry = new THREE.BufferGeometry();
+    for (const attribute of ['position', 'normal', 'color']) {
+      const array = new Float32Array(list.reduce((n, g) => n + g.attributes[attribute].array.length, 0));
+      let offset = 0;
+      for (const g of list) { array.set(g.attributes[attribute].array, offset); offset += g.attributes[attribute].array.length; }
+      geometry.setAttribute(attribute, new THREE.BufferAttribute(array, 3));
+    }
+    list.forEach((g) => g.dispose());
+    geometry.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    return mesh;
+  }
+  function oval(list, color, position, scale, angles = [0, 0, 0]) {
+    add(list, new THREE.IcosahedronGeometry(1, 2), color, position, scale, angles);
+  }
+  // A closed, tapered feather with a raised shaft, not a flat triangle.
+  function feather(list, base, tip, width, color) {
+    const dx = tip[0] - base[0], dz = tip[2] - base[2];
+    const length = Math.hypot(dx, dz), vertices = [], indices = [];
+    const rings = [[0, 0.16], [0.22, 0.5], [0.68, 0.43], [0.93, 0.19], [1, 0.015]];
+    rings.forEach(([t, w]) => {
+      const y = (tip[1] - base[1]) * t;
+      vertices.push(-w * width, y, t * length, 0, y + width * 0.13, t * length,
+        w * width, y, t * length, 0, y - width * 0.045, t * length);
+    });
+    for (let i = 0; i < rings.length - 1; i++) {
+      for (let j = 0; j < 4; j++) {
+        const a = i * 4 + j, b = i * 4 + (j + 1) % 4;
+        indices.push(a, a + 4, b, b, a + 4, b + 4);
+      }
+    }
+    indices.push(0, 1, 3, 1, 2, 3, 16, 19, 17, 17, 19, 18);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    g.setIndex(indices); g.computeVertexNormals();
+    add(list, g, color, base, [1, 1, 1], [0, Math.atan2(dx, dz), 0]);
+  }
 
-  const body = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), brown);
-  body.scale.set(0.9, 0.7, 2.4); body.name = 'body'; eagle.add(body);
-  const head = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), gold);
-  head.position.set(0, 0.35, -2.1); eagle.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 4), beakM);
-  beak.rotation.x = -Math.PI / 2; beak.position.set(0, 0.25, -2.8); eagle.add(beak);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.8, 4), brown);
-  tail.rotation.x = Math.PI / 2; tail.scale.set(1, 1, 0.25); tail.position.set(0, 0, 2.6); eagle.add(tail);
+  oval(parts, '#4d3528', [0, 0, 0.15], [0.83, 0.66, 1.95]);
+  oval(parts, '#654631', [0, -0.18, -0.55], [0.69, 0.55, 1.25]);
+  oval(parts, '#785333', [0, 0.27, -1.65], [0.47, 0.47, 0.91]);
+  oval(parts, '#956b3c', [0, 0.46, -2.12], [0.44, 0.42, 0.65]);
+  // Golden nape and overlapping mantle feathers read from the chase camera.
+  for (let row = 0; row < 4; row++) {
+    for (let side = -1; side <= 1; side++) {
+      const x = side * (0.19 + row * 0.04), z = -1.95 + row * 0.38;
+      feather(parts, [x, 0.77 - row * 0.02, z], [x * 1.5, 0.57, z + 0.83],
+        0.34, ['#bf9451', '#a77a42', '#89623b', '#745035'][row]);
+    }
+  }
+  for (let row = 0; row < 3; row++) {
+    for (let side = -1; side <= 1; side++) {
+      const x = side * 0.35, z = -0.25 + row * 0.57;
+      feather(parts, [x, 0.62 - row * 0.07, z], [x * 1.15, 0.37 - row * 0.05, z + 0.9],
+        0.48, side === 0 ? '#785439' : '#5c3e2c');
+    }
+  }
+  // Dark eye sockets, amber irises, black pupils and a projecting brow.
+  for (const side of [-1, 1]) {
+    oval(parts, '#30251f', [side * 0.367, 0.52, -2.34], [0.11, 0.155, 0.19]);
+    oval(parts, '#d49a37', [side * 0.451, 0.54, -2.38], [0.026, 0.076, 0.083]);
+    oval(parts, '#101113', [side * 0.474, 0.542, -2.40], [0.015, 0.047, 0.048]);
+    oval(parts, '#f7e6bd', [side * 0.485, 0.568, -2.418], [0.008, 0.014, 0.015]);
+    oval(parts, '#745435', [side * 0.35, 0.68, -2.34], [0.15, 0.085, 0.27], [0, 0, side * 0.12]);
+  }
+  oval(parts, '#c6a054', [0, 0.32, -2.68], [0.245, 0.20, 0.28]);
+  oval(parts, '#514b40', [0, 0.32, -2.92], [0.18, 0.17, 0.27]);
+  // Curved downward hook, extruded across X from a side profile (Y/Z).
+  const hookShape = new THREE.Shape();
+  hookShape.moveTo(-3.01, 0.46); hookShape.lineTo(-3.23, 0.32);
+  hookShape.lineTo(-3.28, 0.08); hookShape.lineTo(-3.17, -0.04);
+  hookShape.lineTo(-3.12, 0.16); hookShape.lineTo(-2.91, 0.23);
+  hookShape.closePath();
+  const hook = new THREE.ExtrudeGeometry(hookShape, { depth: 0.21, bevelEnabled: false });
+  hook.translate(0, 0, -0.105); hook.rotateY(-Math.PI / 2);
+  add(parts, hook, '#282b2c', [0, 0, 0]);
+  for (const side of [-1, 1]) {
+    oval(parts, '#42392a', [side * 0.226, 0.37, -2.71], [0.014, 0.035, 0.065]);
+    // Tucked feet stay below the belly rather than dangling during flight.
+    oval(parts, '#957239', [side * 0.37, -0.57, 0.72], [0.15, 0.14, 0.35]);
+    for (let toe = 0; toe < 3; toe++) {
+      oval(parts, '#b08a46', [side * 0.37 + (toe - 1) * 0.085, -0.64, 0.98], [0.043, 0.06, 0.23]);
+      oval(parts, '#292520', [side * 0.37 + (toe - 1) * 0.085, -0.68, 1.17], [0.033, 0.055, 0.09]);
+    }
+  }
+  // A rounded fan of twelve tail feathers with a subtle warm centre.
+  for (let i = 0; i < 12; i++) {
+    const spread = (i - 5.5) / 5.5;
+    feather(parts, [spread * 0.36, 0.0, 1.25],
+      [spread * 1.38, -0.17, 3.66 - Math.abs(spread) * 0.35], 0.43,
+      i % 3 === 0 ? '#79583c' : i % 2 === 0 ? '#4c3729' : '#392b24');
+  }
+  eagle.add(finish(parts, 'body'));
 
   function makeWing(side) {
-    const pivot = new THREE.Group();
+    const pivot = new THREE.Group(), wingParts = [];
+    // Broad shoulder, swept wrist, then individually splayed primary tips.
     const shape = new THREE.Shape();
-    shape.moveTo(0, -1.1); shape.lineTo(4.8 * side, -0.2); shape.lineTo(6.2 * side, 1.3);
-    shape.lineTo(2.6 * side, 1.5); shape.lineTo(0, 1.2);
-    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.18, bevelEnabled: false });
+    shape.moveTo(0, -0.85); shape.lineTo(1.6 * side, -1.05);
+    shape.lineTo(3.6 * side, -0.7); shape.lineTo(4.6 * side, 0.05);
+    shape.lineTo(3.9 * side, 0.95); shape.lineTo(1.5 * side, 1.15);
+    shape.lineTo(0, 0.9); shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.20, bevelEnabled: false });
     g.rotateX(Math.PI / 2);
-    const wingMat = new THREE.MeshLambertMaterial({ color: '#4a2e1c', flatShading: true, side: THREE.DoubleSide });
-    pivot.add(new THREE.Mesh(g, wingMat));
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 3), m('#2c1a10'));
-    tip.rotation.z = -Math.PI / 2 * side; tip.position.set(6.3 * side, 0, 0.6);
-    pivot.add(tip);
-    pivot.position.set(0.5 * side, 0.2, 0);
+    add(wingParts, g, '#50382b', [0, 0, 0]);
+    for (let i = 0; i < 11; i++) {
+      const x = 0.35 + i * 0.33;
+      feather(wingParts, [side * x, -0.06, 0.15],
+        [side * (x + 0.36), -0.10, 2.02 - i * 0.038], 0.49,
+        ['#392b24', '#503c2d', '#604731'][i % 3]);
+    }
+    const tips = [[6.18, -0.22], [6.52, 0.36], [6.49, 0.99],
+      [6.17, 1.60], [5.68, 2.13], [5.07, 2.40], [4.38, 2.42]];
+    tips.forEach(([x, z], i) => {
+      feather(wingParts, [side * (3.72 - i * 0.095), 0.015, -0.40 + i * 0.205],
+        [side * x, 0.10 + Math.sin(i * 0.5) * 0.11, z], 0.56,
+        i % 2 ? '#302722' : '#3c2e26');
+    });
+    // Two overlapping rows of coverts conceal the quill roots.
+    for (let row = 0; row < 2; row++) {
+      for (let i = 0; i < 12; i++) {
+        const x = 0.2 + i * 0.34, z = -0.80 + row * 0.52 + Math.max(0, x - 2) * 0.15;
+        feather(wingParts, [side * x, 0.12 + (1 - row) * 0.08, z],
+          [side * (x + 0.37), 0.055 + (1 - row) * 0.06, z + 0.97], 0.48,
+          (row === 0 ? ['#916940', '#805b39', '#a07948'] : ['#6f4e33', '#7d593a', '#60432e'])[i % 3]);
+      }
+    }
+    pivot.add(finish(wingParts, side < 0 ? 'left-feathers' : 'right-feathers'));
+    pivot.position.set(0.53 * side, 0.22, -0.45);
     return pivot;
   }
   const wingL = makeWing(-1); wingL.name = 'wingL';
