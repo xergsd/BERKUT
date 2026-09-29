@@ -9,8 +9,8 @@ export const CONFIG = {
   // мир
   chunkLen: 220,
   chunkWidth: 520,
-  chunkSegX: 52,
-  chunkSegZ: 22,
+  chunkSegX: 80,         // сетка плотнее, чтобы читались террасы Чарына
+  chunkSegZ: 34,
   chunkCount: 4,
   laneHalfWidth: 60,     // ширина «коридора», где появляются скалы
 
