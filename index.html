@@ -17,15 +17,61 @@
   #stamina.hidden { opacity: 0; }
   #stamina-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #7fd36b, #d8f07a); transition: width .1s linear; }
   #stamina.locked #stamina-fill { background: #ff8a4a; }
+  #stamina.low #stamina-fill { background: #ffb347; animation: blink .6s ease-in-out infinite alternate; }
+  #stamina.empty { background: rgba(200,40,30,.55); animation: blink .35s ease-in-out infinite alternate; }
+  @keyframes blink { to { opacity: .35; } }
   #popups { position: fixed; left: 50%; top: 32%; transform: translateX(-50%); pointer-events: none; text-align: center; }
   .popup { font-size: 26px; font-weight: 900; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.45); animation: pop 1.2s ease-out forwards; }
   @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 15% { transform: scale(1.1); opacity: 1; } 100% { transform: translateY(-50px); opacity: 0; } }
-  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-             color: #fff; text-align: center; background: rgba(40, 20, 40, .25); text-shadow: 0 2px 12px rgba(0,0,0,.4);
-             cursor: pointer; transition: opacity .3s; }
-  #overlay.hidden { opacity: 0; pointer-events: none; }
-  #ov-title { font-size: clamp(36px, 8vw, 72px); font-weight: 900; letter-spacing: 4px; }
-  #ov-text { font-size: 18px; line-height: 1.6; margin-top: 12px; }
+  #hud.hidden { display: none; }
+  #hud.free #score, #hud.free #mult, #hud.free #best { display: none; } /* свободный полёт — без очков */
+
+  /* ---------- меню: стеклянная панель, белый текст, одна золотая черта ---------- */
+  #ui { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px;
+        box-sizing: border-box; background: radial-gradient(ellipse at center, rgba(10,14,24,.1), rgba(10,14,24,.45)); }
+  #ui.hidden { display: none; }
+  .panel { display: none; box-sizing: border-box; width: min(100%, 340px); max-height: calc(100vh - 32px); overflow: auto;
+           padding: 26px 26px 20px; border-radius: 16px; text-align: center; color: #fff;
+           background: rgba(20,24,34,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+  .panel.active { display: block; }
+  .panel.wide { width: min(100%, 520px); }
+  .panel h1 { margin: 0; font-size: 40px; font-weight: 900; letter-spacing: .12em; }
+  .panel h2 { margin: 0 0 16px; font-size: 22px; font-weight: 800; }
+  .line { width: 44px; height: 2px; background: #e2b156; margin: 10px auto 18px; border-radius: 2px; }
+  .panel button { display: block; width: 100%; min-height: 44px; margin: 8px 0; padding: 11px; border-radius: 10px;
+                  font: 600 15px system-ui; color: #fff; background: rgba(255,255,255,.08);
+                  border: 1px solid rgba(255,255,255,.18); cursor: pointer; }
+  .panel button:hover, .panel button:focus-visible { background: rgba(255,255,255,.16); outline: none; }
+  .panel button.main { background: #fff; color: #1d2433; border: 0; font-size: 17px; padding: 13px; }
+  .panel button.main:hover, .panel button.main:focus-visible { background: #ececec; }
+  .record { margin-top: 14px; font-size: 13px; color: #c9cfdb; }
+  .hint { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,.5); }
+  /* «Как играть» */
+  .howto { text-align: left; font-size: 14px; line-height: 1.55; color: #e8ecf4; }
+  .howto h3 { margin: 14px 0 4px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #e2b156; }
+  .howto h3:first-child { margin-top: 0; }
+  .howto p { margin: 0 0 4px; }
+  .howto b { color: #fff; }
+  /* настройки */
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; font-size: 14px; text-align: left; }
+  .panel .field button { width: auto; min-width: 120px; margin: 0; padding: 8px 12px; }
+  .seg { display: flex; gap: 6px; }
+  .panel .seg button { min-width: 0; }
+  .panel .seg button.on { background: #fff; color: #1d2433; border-color: #fff; }
+  .field input[type=range] { width: 130px; accent-color: #e2b156; cursor: pointer; }
+  /* итог забега */
+  .badge { display: inline-block; margin-bottom: 10px; padding: 4px 12px; border-radius: 99px; background: #e2b156;
+           color: #1d2433; font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+  .badge.hidden { display: none; }
+  .big { font-size: 44px; font-weight: 900; line-height: 1.1; }
+  .sub { font-size: 13px; color: #c9cfdb; }
+  .stats { list-style: none; margin: 14px 0 0; padding: 0; font-size: 14px; line-height: 1.7; color: #e8ecf4; }
+  /* кнопка паузы в полёте — для телефона, на ПК есть Esc и P */
+  #pause-btn { position: fixed; z-index: 15; top: 16px; right: 16px; width: 44px; height: 44px; border-radius: 12px;
+               color: #fff; font: 700 14px system-ui; cursor: pointer; background: rgba(20,24,34,.55);
+               border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  #pause-btn.hidden { display: none; }
 </style>
 <!-- Three.js r128 как ES-модуль. Аддоны (bloom и т.п.) грузить с того же CDN и той же версии. -->
 <script type="importmap">
@@ -33,7 +79,7 @@
 </script>
 </head>
 <body>
-  <div id="hud">
+  <div id="hud" class="hidden">
     <div id="score">0</div>
     <div id="mult"></div>
     <div id="dist">0 м</div>
@@ -42,9 +88,74 @@
   </div>
   <div id="stamina" class="hidden"><div id="stamina-fill"></div></div>
   <div id="popups"></div>
-  <div id="overlay">
-    <div id="ov-title">БЕРКУТ</div>
-    <div id="ov-text"></div>
+  <button id="pause-btn" class="ui hidden" type="button" aria-label="Пауза">❚❚</button>
+
+  <div id="ui" class="ui">
+    <section id="menu-main" class="panel">
+      <h1>БЕРКУТ</h1>
+      <div class="line"></div>
+      <button class="main" type="button" data-act="hunt">Играть</button>
+      <button type="button" data-act="free">Свободный полёт</button>
+      <button type="button" data-go="howto">Как играть</button>
+      <button type="button" data-go="settings">Настройки</button>
+      <div class="record" id="menu-best"></div>
+      <div class="hint">Пробел — играть</div>
+    </section>
+
+    <section id="menu-howto" class="panel wide">
+      <h2>Как играть</h2>
+      <div class="howto">
+        <h3>Управление</h3>
+        <p><b>Мышь, палец или WASD</b> — направление полёта</p>
+        <p><b>Shift или второй палец</b> — рывок</p>
+        <p><b>Пробел, левая кнопка мыши или палец у нижнего края</b> — пике</p>
+        <p><b>Esc или P</b> — пауза, <b>M</b> — звук</p>
+        <h3>Силы</h3>
+        <p>Полоска сил тает всегда, в рывке — быстрее. Пике сил не тратит, ночью они тают медленнее.
+          Удар о землю отнимает силы, в пике — вдвое больше. Без сил беркут снижается и падает.</p>
+        <h3>Охота</h3>
+        <p><b>Степь</b> — сурки: подкрадись низко, иначе спрячутся в нору.</p>
+        <p><b>Чарын</b> — кеклики летают над каньоном.</p>
+        <p><b>Тянь-Шань</b> — козлята тау-теке на вершинах скальных выступов у стен: пройди низко над вершиной и не врежься в выступ.</p>
+        <p><b>Ночь</b> — добычи нет, можно отдохнуть.</p>
+        <p>Добыча, пойманная в пике, — очки ×2.</p>
+        <h3>Очки</h3>
+        <p>Низкий полёт и рывок умножают очки за дистанцию. Пролёт впритирку к скале — «Близко!».
+          Трюки и добыча подряд собирают комбо.</p>
+      </div>
+      <button type="button" data-back>Назад</button>
+    </section>
+
+    <section id="menu-settings" class="panel">
+      <h2>Настройки</h2>
+      <div class="field"><span>Звук</span><button id="sound-toggle" type="button" aria-pressed="true">Звук: вкл.</button></div>
+      <label class="field">Громкость <input id="sound-volume" type="range" min="0" max="100" value="45"></label>
+      <div class="field"><span>Графика</span>
+        <div class="seg"><button type="button" data-quality="high">Высокая</button><button type="button" data-quality="low">Низкая</button></div>
+      </div>
+      <label class="field">Скорость WASD <input id="key-sens" type="range" min="50" max="200" value="100"></label>
+      <button type="button" data-back>Назад</button>
+    </section>
+
+    <section id="menu-pause" class="panel">
+      <h2>Пауза</h2>
+      <button class="main" type="button" data-act="resume">Продолжить</button>
+      <button type="button" data-act="restart">Заново</button>
+      <button type="button" data-go="settings">Настройки</button>
+      <button type="button" data-act="menu">В главное меню</button>
+    </section>
+
+    <section id="menu-over" class="panel">
+      <div class="badge hidden" id="over-record">НОВЫЙ РЕКОРД</div>
+      <h2 id="over-title"></h2>
+      <div class="big" id="over-score">0</div>
+      <div class="sub">очков</div>
+      <ul class="stats" id="over-stats"></ul>
+      <div class="record" id="over-best"></div>
+      <button class="main" type="button" data-act="restart">Ещё раз</button>
+      <button type="button" data-act="menu">В меню</button>
+      <div class="hint">Пробел — ещё раз</div>
+    </section>
   </div>
   <script type="module" src="./main.js"></script>
 </body>

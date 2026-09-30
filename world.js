@@ -1,7 +1,9 @@
 // world.js — бесконечная земля из чанков и скалы-препятствия
 import * as THREE from 'three';
 import { CONFIG, rockSpacing } from './config.js';
-import { BIOMES } from './visuals.js';
+import { BIOMES, createMarmot } from './visuals.js';
+import { makeFormation, touchesFormation } from './rocks.js';
+const rockPoint = new THREE.Vector3();
 
 // ---------- рельеф ----------
 function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
@@ -47,20 +49,35 @@ function biomeMix(z) {
   return [(cur + n - 1) % n, cur, t * t * (3 - 2 * t)];
 }
 
-export function height(x, z) {
+function rawHeight(x, z) {
   const [a, b, t] = biomeMix(z);
   const hb = RELIEF[b % RELIEF.length](x, z);
   if (t >= 1) return hb;
   return RELIEF[a % RELIEF.length](x, z) * (1 - t) + hb * t;
 }
 
+// Река справа, за пределами коридора полёта. Вся растительность берёт высоту отсюда же.
+export function riverCenter(z) { return 96 + Math.sin(z * 0.006) * 13 + Math.sin(z * 0.017) * 4; }
+// Уровень воды идёт по дну долины (x = 0), а не по верху стен каньона
+export function riverLevel(z) {
+  return (rawHeight(0, z - 25) + rawHeight(0, z) * 2 + rawHeight(0, z + 25)) * 0.25 - 4;
+}
+export function height(x, z) {
+  const h = rawHeight(x, z), d = Math.abs(x - riverCenter(z));
+  if (d >= 22) return h;
+  return THREE.MathUtils.lerp(riverLevel(z) - 3.5, h, ss(10, 22, d)); // русло
+}
+
+// Индекс биома в точке z, без учёта плавного перехода: 0 Степь, 1 Чарын, 2 Тянь-Шань, 3 Ночь
+export function biomeAt(z) { return Math.floor(Math.max(0, -z) / CONFIG.biomeEvery) % BIOMES.length; }
+
 const _ca = new THREE.Color(), _cb = new THREE.Color();
 
 export class World {
   constructor(scene) {
     this.scene = scene;
-    this.terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.rockMat = new THREE.MeshLambertMaterial({ flatShading: true });
+    this.terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.rockMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.palettes = BIOMES.map((b) => b.ground.map((c) => new THREE.Color(c)));
     this.setBiome(BIOMES[0]);
 
@@ -71,19 +88,22 @@ export class World {
       this.chunks.push(mesh);
     }
     this.rocks = [];
-    const rockGeo = new THREE.IcosahedronGeometry(1, 0);
     for (let i = 0; i < CONFIG.rockCount; i++) {
-      const r = new THREE.Mesh(rockGeo, this.rockMat);
+      const r = new THREE.Mesh(new THREE.BufferGeometry(), this.rockMat);
       scene.add(r);
       this.rocks.push(r);
+    }
+    this.marmots = [];
+    for (let i = 0; i < CONFIG.marmotCount; i++) {
+      const m = createMarmot();
+      scene.add(m);
+      this.marmots.push(m);
     }
     this.reset();
   }
 
-  // Земля красится по месту (биом по z), скалы перекрашиваются при смене биома
-  setBiome(biome) {
-    this.rockMat.color.set(biome.rock);
-  }
+  // Скалы сохраняют цвет биома под ними.
+  setBiome(biome) { this.currentBiome = biome; }
 
   // Цвет земли по высоте и крутизне. ny — вертикальная составляющая нормали (1 — ровно)
   groundColor(pal, h, ny, out) {
@@ -132,6 +152,7 @@ export class World {
     mesh.geometry = this.buildChunk(z);
     mesh.position.z = z;
     mesh.userData.z = z;
+    this.onChunk?.(mesh, z); // растительность переставляется вместе с чанком
   }
 
   placeRock(r, z, playerX, dist) {
@@ -139,21 +160,134 @@ export class World {
     const x = Math.random() < aimedChance
       ? playerX + (Math.random() - 0.5) * 16 // скала «на линии» игрока
       : (Math.random() - 0.5) * CONFIG.laneHalfWidth * 2;
-    const s = 4 + Math.random() * 9;
-    r.scale.set(s * 0.8, s * (1.6 + Math.random()), s * 0.8);
-    r.position.set(x, height(x, z) + r.scale.y * 0.6, z);
-    r.rotation.set(Math.random() * 0.3, Math.random() * 6, Math.random() * 0.3);
-    r.userData.near = false;   // беркут пролетал рядом
-    r.userData.passed = false; // скала уже позади и учтена
+    this.buildRock(r,x,z,Math.floor(Math.random()*4294967296));
+    this.protectHuntingLane(r);
+  }
+
+  buildRock(r,x,z,seed) {
+    const [a,b,t] = biomeMix(z), biome=t<.5?a:b;
+    const floor=height(x,z);
+    const formation=makeFormation(biome,seed,(dx,dz)=>height(x+dx,z+dz)-floor);
+    r.geometry.dispose(); r.geometry=formation.geometry;
+    r.position.set(x,floor,z); r.rotation.set(0,0,0); r.scale.set(1,1,1);
+    r.userData={...formation,seed,near:false,passed:false};
+  }
+
+  // Flight is toward -Z: 110 m before prey, 85 m after, 28 m wide.
+  // Include the entire formation (also rubble), plus the eagle's collision radius.
+  protectHuntingLane(r) {
+    const b=r.userData.bounds, pad=14+CONFIG.eagleRadius;
+    const intervals=[];
+    for(const m of [...this.marmots, ...(this.extraTargets?.() ?? [])]) {
+      if(!m.visible || m.userData.state==='none')continue;
+      if(r.position.z+b.max.z < m.position.z-85-CONFIG.eagleRadius ||
+         r.position.z+b.min.z > m.position.z+110+CONFIG.eagleRadius)continue;
+      intervals.push([m.position.x-pad-b.max.x,m.position.x+pad-b.min.x]);
+    }
+    const clear=x=>intervals.every(([lo,hi])=>x<lo || x>hi);
+    if(clear(r.position.x))return;
+    // The nearest free side keeps rock groups in the world, even for overlapping lanes.
+    const candidates=intervals.flatMap(([lo,hi])=>[lo-.5,hi+.5]).filter(clear);
+    candidates.sort((a,b)=>Math.abs(a-r.position.x)-Math.abs(b-r.position.x));
+    const {seed,near,passed}=r.userData;
+    this.buildRock(r,candidates[0],r.position.z,seed);
+    r.userData.near=near;r.userData.passed=passed;
+  }
+
+  // Сурок сидит только на пригорке: беркут не опускается ниже altitudeMid - altitudeRange,
+  // и над низиной до сурка было бы не дотянуться. Не нашлось пригорка — место пустует.
+  placeMarmot(m, z) {
+    const minGround = CONFIG.altitudeMid - CONFIG.altitudeRange - CONFIG.marmotCatchAlt + 2;
+    const u = m.userData;
+    u.state = 'none'; // none | up | hiding | hidden | caught
+    u.hide = 0;
+    u.checked = false;
+    u.body.position.y = 0;
+    u.body.rotation.x = 0;
+    u.body.visible = true;
+    m.visible = false;
+    m.position.z = z;
+    if (biomeAt(z) !== 0) return; // сурки живут только в Степи
+    for (let i = 0; i < 12; i++) {
+      const x = (Math.random() - 0.5) * (CONFIG.controlRangeX - 5) * 2;
+      const mz = z + (Math.random() - 0.5) * 60;
+      const h = height(x, mz);
+      if (h < minGround) continue;
+      m.position.set(x, h, mz);
+      m.rotation.y = (Math.random() - 0.5) * 0.8;
+      m.visible = true;
+      u.state = 'up';
+      for(const r of this.rocks)this.protectHuntingLane(r);
+      break;
+    }
   }
 
   reset() {
+    for(const m of this.marmots)m.visible=false;
     this.chunks.forEach((c, i) => this.setChunk(c, -i * CONFIG.chunkLen));
     let z = -80;
     for (const r of this.rocks) {
       this.placeRock(r, z, 0, 0);
       z -= rockSpacing(0) * (0.8 + Math.random() * 0.4);
     }
+    z = -200;
+    for (const m of this.marmots) {
+      this.placeMarmot(m, z);
+      z -= CONFIG.marmotSpacing * (0.7 + Math.random() * 0.6);
+    }
+  }
+
+  // Сурки: переносятся вперёд, замечают беркута, летящего высоко, и прячутся.
+  // speed — текущая скорость беркута, м/с; пикирующего беркута сурок замечает позже
+  updatePrey(dt, playerPos, speed, diving = false) {
+    const alert = speed * CONFIG.marmotAlertTime * (diving ? CONFIG.diveAlertMult : 1);
+    for (const m of this.marmots) {
+      const u = m.userData;
+      if (m.position.z > playerPos.z + 30) {
+        const farthest = Math.min(...this.marmots.map((k) => k.position.z));
+        this.placeMarmot(m, farthest - CONFIG.marmotSpacing * (0.7 + Math.random() * 0.6));
+        continue;
+      }
+      const ahead = playerPos.z - m.position.z;
+      if (u.state === 'up' && ahead > 0 && ahead < alert &&
+          playerPos.y - m.position.y > CONFIG.marmotSneakAlt) u.state = 'hiding';
+      // беркут близко, а сурок не спрятался — замирает и откидывается назад, глядя вверх
+      const close = u.state === 'up' && ahead > 0 && ahead < Math.max(30, speed * CONFIG.strikeTime) &&
+        Math.abs(playerPos.x - m.position.x) < 15;
+      u.body.rotation.x += ((close ? -0.35 : 0) - u.body.rotation.x) * Math.min(1, dt * 6);
+      if (u.state === 'hiding') {
+        u.hide = Math.min(1, u.hide + dt / CONFIG.marmotHideTime);
+        u.body.position.y = -3.2 * u.hide * u.hide;
+        if (u.hide >= 1) u.state = 'hidden';
+      }
+    }
+  }
+
+  // Есть ли впереди, ближе dist метров, сурок, до которого можно дотянуться, — пора выпускать когти
+  preyAhead(pos, dist) {
+    return this.marmots.some((m) => {
+      const u = m.userData, ahead = pos.z - m.position.z;
+      return (u.state === 'up' || u.state === 'hiding') && !u.checked && ahead > 0 && ahead < dist &&
+        Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius * 2 && pos.y - m.position.y < CONFIG.marmotCatchAlt * 2;
+    });
+  }
+
+  // Где беркут только что схватил сурков (позиции). Проверка в момент пролёта над сурком.
+  catchPrey(pos) {
+    const caught = [];
+    for (const m of this.marmots) {
+      const u = m.userData;
+      if (u.checked || pos.z > m.position.z) continue;
+      u.checked = true;
+      const catchable = u.state === 'up' || (u.state === 'hiding' && u.hide < CONFIG.marmotCatchHide);
+      if (catchable && Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius &&
+          pos.y - m.position.y < CONFIG.marmotCatchAlt) {
+        u.state = 'caught';
+        u.body.visible = false;
+        caught.push(m.position.clone());
+      }
+    }
+    return caught;
   }
 
   update(playerPos, dist) {
@@ -173,38 +307,26 @@ export class World {
     }
   }
 
-  // Столкновение: скала — эллипсоид, земля — высота рельефа
+  // Скалы первыми: сохраняем правила удара о землю из этой версии игры.
   collides(pos, radius) {
-    if (pos.y - radius < height(pos.x, pos.z)) return 'ground';
     for (const r of this.rocks) {
-      const dz = pos.z - r.position.z;
-      if (Math.abs(dz) > 30) continue;
-      const nx = (pos.x - r.position.x) / (r.scale.x + radius);
-      const ny = (pos.y - r.position.y) / (r.scale.y + radius);
-      const nz = dz / (r.scale.z + radius);
-      if (nx * nx + ny * ny + nz * nz < 1) return 'rock';
+      rockPoint.copy(pos).sub(r.position);
+      if (touchesFormation(r.userData, rockPoint, radius)) return 'rock';
     }
+    if (pos.y - radius < height(pos.x, pos.z)) return 'ground';
     return null;
   }
 
-  // Сколько скал беркут только что миновал впритирку (в пределах nearMissGap).
-  // Вызывать после collides(), когда столкновения нет.
   nearMisses(pos, radius) {
-    let n = 0;
-    for (const r of this.rocks) {
-      const u = r.userData, dz = pos.z - r.position.z;
-      if (u.passed || Math.abs(dz) > 40) continue;
-      if (dz < -r.scale.z - radius) { // скала осталась позади
-        u.passed = true;
-        if (u.near) n++;
-        continue;
-      }
-      // эллипсоид скалы, раздутый на величину зазора
-      const g = radius + CONFIG.nearMissGap;
-      const nx = (pos.x - r.position.x) / (r.scale.x + g);
-      const ny = (pos.y - r.position.y) / (r.scale.y + g);
-      const nz = dz / (r.scale.z + g);
-      if (nx * nx + ny * ny + nz * nz < 1) u.near = true;
+    let n=0;
+    for(const r of this.rocks) {
+      const u=r.userData;
+      if(u.passed) continue;
+      rockPoint.copy(pos).sub(r.position);
+      if(rockPoint.z<u.bounds.min.z-radius) {
+        u.passed=true;
+        if(u.near)n++;
+      } else if(touchesFormation(u,rockPoint,radius+CONFIG.nearMissGap)) u.near=true;
     }
     return n;
   }
