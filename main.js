@@ -113,6 +113,9 @@ game.onOver = (result) => {
 menu.setBest(game.best);
 refreshShop();
 menu.setMap(progress);
+// камера сразу на своём месте за беркутом — иначе первую секунду она «доезжает» и снизу виден беркут
+camera.position.set(player.pos.x * 0.7, player.pos.y + 11, player.pos.z + cameraDistance());
+camera.lookAt(player.pos.x * 0.85, player.pos.y + 1, player.pos.z - 30);
 menu.show('main');
 
 const pauseBtn = document.getElementById('pause-btn');

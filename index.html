@@ -109,9 +109,10 @@
                border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   #pause-btn.hidden { display: none; }
 </style>
-<!-- Three.js r128 как ES-модуль. Аддоны (bloom и т.п.) грузить с того же CDN и той же версии. -->
+<!-- Three.js r128 как ES-модуль — своя копия в vendor/ (лицензия MIT там же): игра не зависит от внешних CDN.
+     Аддоны (bloom и т.п.) брать той же версии и тоже класть в vendor/. -->
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js" } }
+{ "imports": { "three": "./vendor/three.module.js" } }
 </script>
 </head>
 <body>
