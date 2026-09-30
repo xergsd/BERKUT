@@ -1,7 +1,7 @@
 // player.js — беркут: управление, движение, взмахи крыльев
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { createEagle, createMarmot, createKeklik, createIbexKid } from './visuals.js';
+import { createEagle, createMarmot, createKeklik, createIbexKid, createHare, GERBIL, MARMOT, ULAR, GAZELLE } from './visuals.js';
 import { height } from './world.js';
 import { FlightMotion } from './flight-motion.js';
 
@@ -10,18 +10,23 @@ import { FlightMotion } from './flight-motion.js';
 function carryModel(kind) {
   const holder = new THREE.Group();
   let model;
-  if (kind === 'marmot') { // стоит «столбиком» — кладём горизонтально
-    model = createMarmot().userData.body;
+  if (kind === 'marmot' || kind === 'gerbil') { // стоит «столбиком» — кладём горизонтально
+    model = createMarmot(kind === 'gerbil' ? GERBIL : MARMOT).userData.body;
     model.position.set(0, -1.4, 0.7);
     holder.rotation.set(-Math.PI / 2, Math.PI, 0);
-    holder.scale.setScalar(0.5);
-  } else if (kind === 'ibex') {
-    model = createIbexKid().userData.body;
+    holder.scale.setScalar(kind === 'gerbil' ? 0.42 : 0.5); // песчанка меньше сурка: 1.1 против 1.3
+  } else if (kind === 'ibex' || kind === 'gazelle') {
+    model = createIbexKid(kind === 'gazelle' ? GAZELLE : undefined).userData.body;
     model.position.set(0, -1.83, 0);
     holder.rotation.y = Math.PI;
     holder.scale.setScalar(0.7);
+  } else if (kind === 'hare') {
+    model = createHare().userData.body;
+    model.position.set(0, -1.35, 0);
+    holder.rotation.y = Math.PI;
+    holder.scale.setScalar(0.58);
   } else {
-    model = createKeklik(); // у модели свой масштаб 1.8 — хват на спине на высоте 0.45 × 1.8
+    model = createKeklik(kind === 'ular' ? ULAR : undefined); // свой масштаб 1.8 — хват на спине на высоте 0.45 × 1.8
     model.position.set(0, -0.8, 0);
     model.userData.wingL.rotation.z = 0.9; // крылья обвисли
     model.userData.wingR.rotation.z = -0.9;
@@ -55,7 +60,7 @@ export class Player {
     this.motion = new FlightMotion();
     this.talons = this.mesh.userData.talons;
     this.carried = {};
-    for (const kind of ['marmot', 'keklik', 'ibex']) {
+    for (const kind of ['marmot', 'gerbil', 'hare', 'ular', 'keklik', 'ibex', 'gazelle']) {
       this.carried[kind] = carryModel(kind);
       this.mesh.userData.carry.add(this.carried[kind]);
     }
@@ -253,7 +258,7 @@ export class Player {
     this.strike+=(want-this.strike)*smooth(want?10:6);
     this.grip+=((carrying?1:0)-this.grip)*smooth(carrying?14:9);
     this.legPose+=((carrying?.04:THREE.MathUtils.lerp(.72,1.15,this.lunge))-this.legPose)*smooth(carrying?7:14);
-    const width=this.carryKind==='ibex'?.43:this.carryKind==='keklik'?.25:.33;
+    const width=this.carryKind==='ibex'||this.carryKind==='gazelle'?.43:this.carryKind==='keklik'||this.carryKind==='ular'?.25:.33;
     for(const hip of this.talons) {
       hip.visible=this.strike>.02;
       hip.position.x=hip.userData.side*THREE.MathUtils.lerp(.33,width,this.grip);
@@ -284,13 +289,14 @@ export class Player {
     }
   }
 
-  // Первые секунду добыча бьётся в когтях: кеклик машет крыльями, козлёнок дрыгает ногами, сурок извивается
+  // Первые секунду добыча бьётся в когтях: птицы машут крыльями, козлёнок и джейранёнок дрыгают ногами,
+  // остальные извиваются
   struggle(kind, model) {
     const a = this.carryAge, k = Math.exp(-a * 2.5), fight = Math.sin(a * 26);
-    if (kind === 'keklik') {
+    if (kind === 'keklik' || kind === 'ular') {
       model.userData.wingL.rotation.z = 0.9 - fight * 0.7 * k; // обвисшие крылья + взмахи
       model.userData.wingR.rotation.z = -0.9 + fight * 0.7 * k;
-    } else if (kind === 'ibex') {
+    } else if (kind === 'ibex' || kind === 'gazelle') {
       model.userData.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(a * 22 + i * 1.7) * 0.6 * k; });
       model.userData.neck.rotation.x = 0.3 + fight * 0.25 * k;
     } else {

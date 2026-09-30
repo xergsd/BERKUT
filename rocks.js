@@ -1,19 +1,19 @@
 // Faceted formations share one draw call; collision follows each solid piece.
 import * as THREE from 'three';
 
-export const ROCK_STYLES = ['Степные валуны', 'Слоистый песчаник', 'Горные гребни', 'Ночные останцы'];
-const baseColors = [0x998368, 0xbd6945, 0x87929b, 0x626b84];
 const point = new THREE.Vector3(), closest = new THREE.Vector3();
 const triangle = new THREE.Triangle(), ray = new THREE.Ray();
 const rayDirection = new THREE.Vector3(1, .173, .071).normalize();
 
-export function makeFormation(biome, seed, ground, forceKind) {
+// style — скалы региона (regions.js: rocks): color, tall, profile, bands, snow, moss, shelves, kinds
+export function makeFormation(style, seed, ground, forceKind) {
   let state = seed >>> 0;
   const rand = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
   const choice = rand();
-  const kind = forceKind || (choice < .10 ? 'arch' : choice < .38 ? 'boulders' : choice < .72 ? 'split' : 'ridge');
+  const [arch, boulders, split] = style.kinds;
+  const kind = forceKind || (choice < arch ? 'arch' : choice < boulders ? 'boulders' : choice < split ? 'split' : 'ridge');
   const positions = [], colors = [], pieces = [];
-  const tint = new THREE.Color(baseColors[biome]);
+  const tint = new THREE.Color(style.color), moss = style.moss && new THREE.Color(style.moss);
   const size = .8 + rand() * .4;
   function storePiece(geo,x,z) {
     const p=geo.attributes.position;
@@ -21,17 +21,17 @@ export function makeFormation(biome, seed, ground, forceKind) {
     const normals=geo.attributes.normal, shade=.87+rand()*.23;
     for(let i=0;i<p.count;i+=3) {
       const h=(p.getY(i)+p.getY(i+1)+p.getY(i+2))/3, ny=normals.getY(i);
-      const band=biome===1?Math.sin(h*1.4)*.09:0;
+      const band=style.bands?Math.sin(h*1.4)*.09:0;
       const c=tint.clone().multiplyScalar(shade+band+(rand()-.5)*.10);
-      if(biome===2&&h>ground(x,z)+15&&ny>.36)c.lerp(new THREE.Color(0xe6edf0),.8);
-      if((biome===0||biome===3)&&ny>.6)c.lerp(new THREE.Color(biome===0?0x89905d:0x596b72),.18);
+      if(style.snow&&h>ground(x,z)+15&&ny>.36)c.lerp(new THREE.Color(0xe6edf0),.8);
+      else if(moss&&ny>.6)c.lerp(moss,.18);
       for(let j=0;j<3;j++){positions.push(p.getX(i+j),p.getY(i+j),p.getZ(i+j));colors.push(c.r,c.g,c.b);}
     }
     pieces.push({box:geo.boundingBox.clone(),vertices:Float32Array.from(p.array)});
     geo.dispose();
   }
   function crag(pier = false) {
-    const verts=[], ids=[], rings=[0,.4,.78,1], radii=pier?[1,.98,.90,.83]:biome===1?[1,.96,.80,.64]:biome===2?[1,.87,.51,.16]:[1,.9,.60,.30];
+    const verts=[], ids=[], rings=[0,.4,.78,1], radii=pier?[1,.98,.90,.83]:style.profile==='mesa'?[1,.96,.80,.64]:style.profile==='peak'?[1,.87,.51,.16]:[1,.9,.60,.30];
     const sides=6, irregular=Array.from({length:sides},()=>.85+rand()*.3);
     rings.forEach((y,k)=>{for(let j=0;j<sides;j++){
       const a=j*Math.PI*2/sides;
@@ -84,15 +84,15 @@ export function makeFormation(biome, seed, ground, forceKind) {
     opening = new THREE.Vector3(0,floor+14,0);
   } else {
     const count = kind === 'boulders' ? 5 : kind === 'ridge' ? 6 : 4;
-    const tall = (kind === 'boulders' ? 11 : biome === 2 ? 31 : biome === 1 ? 29 : 25) * size;
+    const tall = (kind === 'boulders' ? 11 : style.tall) * size;
     for(let i=0;i<count;i++) {
       const x = kind === 'ridge' ? (i-(count-1)/2)*4.4 : (i%2===0?-1:1)*(2.8+i*1.3);
       const z = (rand()-.5)*10;
       const h = tall * (i===0?1:.45+rand()*.4);
       const w = (kind==='boulders'?7:5.2+rand()*3)*size;
       piece(x,z,w,h,4.5+rand()*2.5,undefined,(rand()-.5)*5);
-      // Charyn shelves visibly overlap the main cliffs.
-      if(biome===1 && kind!=='boulders') piece(x-1,z+1,w*1.15,h*.36,5,undefined,1);
+      // Charyn and Mangystau shelves visibly overlap the main cliffs.
+      if(style.shelves && kind!=='boulders') piece(x-1,z+1,w*1.15,h*.36,5,undefined,1);
     }
   }
   // Talus around the feet, leaving the arch passage clear.
@@ -107,7 +107,7 @@ export function makeFormation(biome, seed, ground, forceKind) {
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-  return {geometry,pieces,kind,biome,opening,bounds:geometry.boundingBox.clone()};
+  return {geometry,pieces,kind,opening,bounds:geometry.boundingBox.clone()};
 }
 
 // Sphere-to-triangle distance plus an inside test, including open arches and crevices.

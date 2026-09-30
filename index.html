@@ -35,6 +35,7 @@
            background: rgba(20,24,34,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
            border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
   .panel.active { display: block; }
+  .panel { min-width: 0; } /* на узком экране панель не шире экрана */
   .panel.wide { width: min(100%, 520px); }
   .panel h1 { margin: 0; font-size: 40px; font-weight: 900; letter-spacing: .12em; }
   .panel h2 { margin: 0 0 16px; font-size: 22px; font-weight: 800; }
@@ -46,6 +47,41 @@
   .panel button.main { background: #fff; color: #1d2433; border: 0; font-size: 17px; padding: 13px; }
   .panel button.main:hover, .panel button.main:focus-visible { background: #ececec; }
   .record { margin-top: 14px; font-size: 13px; color: #c9cfdb; }
+  /* улучшение беркута: золотая рамка, цена справа */
+  .panel button.upgrade { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+                          border-color: rgba(226,177,86,.7); text-align: left; }
+  .panel button.upgrade:disabled { opacity: .5; cursor: default; background: rgba(255,255,255,.08); }
+  .up-cost { color: #f3d28c; white-space: nowrap; }
+  .up-balance { margin: -6px 0 14px; font-size: 14px; color: #c9cfdb; }
+  .up-card { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.1); text-align: left; }
+  .up-card:first-child { border-top: 0; }
+  .up-text { flex: 1; min-width: 0; }
+  .up-title { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 15px; }
+  .dots { color: #e2b156; letter-spacing: 2px; font-size: 12px; }
+  .up-about { font-size: 13px; color: #c9cfdb; margin-top: 2px; }
+  .panel .up-card button { width: auto; min-width: 118px; margin: 0; padding: 8px 10px; font-size: 13px;
+                           border-color: rgba(226,177,86,.7); }
+  .panel .up-card button:disabled { opacity: .45; cursor: default; background: rgba(255,255,255,.08); }
+  /* окно «Облик»: панель сбоку, чтобы было видно беркута */
+  .panel.aside { width: min(100%, 400px); margin: 0 auto 0 4vw; }
+  @media (max-width: 760px) { .panel.aside { margin: auto auto 0; max-height: 52vh; } }
+  @media (max-width: 480px) { .panel { padding: 20px 16px 16px; } .panel .up-card button { min-width: 84px; padding: 8px; } }
+  .skin-card { cursor: pointer; border-radius: 10px; padding: 10px 8px; }
+  .skin-card.on { background: rgba(255,255,255,.1); }
+  .swatches { display: flex; }
+  .swatches i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(20,24,34,.8); margin-left: -6px; }
+  .swatches i:first-child { margin-left: 0; }
+  /* карта маршрута */
+  .panel.map { width: min(100%, 640px); }
+  #map-svg { display: block; width: 100%; height: auto; margin: 4px 0 6px; }
+  #map-svg .land { fill: rgba(255,255,255,.06); stroke: rgba(226,177,86,.55); stroke-width: 2; stroke-linejoin: round; }
+  #map-svg .route { fill: none; stroke: rgba(226,177,86,.8); stroke-width: 2.5; stroke-dasharray: 8 7; }
+  #map-svg .arrow { fill: #e2b156; }
+  #map-svg .node circle { fill: #2a3040; stroke: rgba(255,255,255,.35); stroke-width: 2; }
+  #map-svg .node text { fill: rgba(255,255,255,.45); font: 600 19px system-ui; }
+  #map-svg .node.open circle { fill: #e2b156; stroke: #fff3c4; }
+  #map-svg .node.open text { fill: #fff; }
+  .gold { color: #f3d28c; font-weight: 700; }
   .hint { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,.5); }
   /* «Как играть» */
   .howto { text-align: left; font-size: 14px; line-height: 1.55; color: #e8ecf4; }
@@ -84,7 +120,7 @@
     <div id="mult"></div>
     <div id="dist">0 м</div>
     <div id="best">Рекорд: 0 очков · 0 м</div>
-    <div id="biome">Степь</div>
+    <div id="biome">Сарыарка</div>
   </div>
   <div id="stamina" class="hidden"><div id="stamina-fill"></div></div>
   <div id="popups"></div>
@@ -96,6 +132,9 @@
       <div class="line"></div>
       <button class="main" type="button" data-act="hunt">Играть</button>
       <button type="button" data-act="free">Свободный полёт</button>
+      <button type="button" class="upgrade" data-go="upgrades"></button>
+      <button type="button" data-go="skins">Облик</button>
+      <button type="button" data-go="map">Карта</button>
       <button type="button" data-go="howto">Как играть</button>
       <button type="button" data-go="settings">Настройки</button>
       <div class="record" id="menu-best"></div>
@@ -111,18 +150,48 @@
         <p><b>Пробел, левая кнопка мыши или палец у нижнего края</b> — пике</p>
         <p><b>Esc или P</b> — пауза, <b>M</b> — звук</p>
         <h3>Силы</h3>
-        <p>Полоска сил тает всегда, в рывке — быстрее. Пике сил не тратит, ночью они тают медленнее.
+        <p>Полоска сил тает всегда, в рывке — быстрее. Пике сил не тратит.
           Удар о землю отнимает силы, в пике — вдвое больше. Без сил беркут снижается и падает.</p>
         <h3>Охота</h3>
-        <p><b>Степь</b> — сурки: подкрадись низко, иначе спрячутся в нору.</p>
+        <p>Беркут облетает Казахстан по кругу, в каждом регионе своя добыча:</p>
+        <p><b>Сарыарка</b> — сурки: подкрадись низко, иначе спрячутся в нору.</p>
+        <p><b>Бурабай</b> — зайцы в сосновом лесу.</p>
+        <p><b>Алтай</b> — улары на горных склонах.</p>
         <p><b>Чарын</b> — кеклики летают над каньоном.</p>
         <p><b>Тянь-Шань</b> — козлята тау-теке на вершинах скальных выступов у стен: пройди низко над вершиной и не врежься в выступ.</p>
-        <p><b>Ночь</b> — добычи нет, можно отдохнуть.</p>
+        <p><b>Кызылкум</b> — песчанки у нор среди барханов: тоже прячутся, если лететь высоко.</p>
+        <p><b>Мангистау</b> — джейранята на белом плато.</p>
         <p>Добыча, пойманная в пике, — очки ×2.</p>
         <h3>Очки</h3>
         <p>Низкий полёт и рывок умножают очки за дистанцию. Пролёт впритирку к скале — «Близко!».
           Трюки и добыча подряд собирают комбо.</p>
+        <h3>Улучшения</h3>
+        <p>Каждые 100 очков превращаются в золотое перо. За перья в окне «Улучшения» прокачивай
+          выносливость, рывок, крылья, пике и когти — что захочешь.</p>
       </div>
+      <button type="button" data-back>Назад</button>
+    </section>
+
+    <section id="menu-upgrades" class="panel wide">
+      <h2>Улучшения</h2>
+      <div class="up-balance">Золотые перья: <span class="gold" id="up-feathers">0</span></div>
+      <div id="up-list"></div>
+      <button type="button" data-back>Назад</button>
+    </section>
+
+    <section id="menu-map" class="panel map">
+      <h2>Карта</h2>
+      <svg id="map-svg" viewBox="0 0 1000 570" role="img" aria-label="Маршрут беркута по Казахстану"></svg>
+      <div class="up-balance" id="map-count"></div>
+      <div class="hint">Беркут облетает Казахстан по кругу: старт — Сарыарка. Долети до региона, чтобы открыть его.</div>
+      <button type="button" data-back>Назад</button>
+    </section>
+
+    <section id="menu-skins" class="panel aside">
+      <h2>Облик</h2>
+      <div class="up-balance">Золотые перья: <span class="gold" id="skin-feathers">0</span></div>
+      <div id="skin-list"></div>
+      <div class="hint">Нажми на облик, чтобы примерить</div>
       <button type="button" data-back>Назад</button>
     </section>
 
@@ -152,7 +221,9 @@
       <div class="sub">очков</div>
       <ul class="stats" id="over-stats"></ul>
       <div class="record" id="over-best"></div>
+      <div class="gold" id="over-feathers"></div>
       <button class="main" type="button" data-act="restart">Ещё раз</button>
+      <button type="button" class="upgrade" data-go="upgrades"></button>
       <button type="button" data-act="menu">В меню</button>
       <div class="hint">Пробел — ещё раз</div>
     </section>

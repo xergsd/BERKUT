@@ -8,8 +8,11 @@ import { Game } from './game.js';
 import { FlightAudio } from './audio.js';
 import { Nature } from './nature.js';
 import { Prey } from './prey.js';
+import { Critters } from './critters.js';
 import { Menu } from './menu.js';
 import { Effects } from './effects.js';
+import { Progress } from './upgrades.js';
+import { applySkin } from './skins.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -23,6 +26,9 @@ const sky = createSky(scene);
 const world = new World(scene);
 const nature = new Nature(scene, world);
 const prey = new Prey(scene, world);
+const critters = new Critters(scene, world);
+// скалы не должны загораживать подлёт ни к какой добыче
+world.extraTargets = () => [...prey.kids, ...critters.targets()];
 const player = new Player(scene, window);
 const game = new Game();
 const fx = createPostFX(renderer, scene, camera);
@@ -41,7 +47,8 @@ function resetWorld() {
   applyBiome(scene, 0, 1);
   biomeStage = 0;
   player.reset();
-  prey.reset(); // до world.reset: скалы расставляются в обход новых козлят
+  prey.reset(); // до world.reset: скалы расставляются в обход новой добычи
+  critters.reset();
   world.reset();
   nature.reset();
   effects.clear();
@@ -69,12 +76,27 @@ function setPaused(on) {
   else menu.hide();
 }
 
+const progress = new Progress(); // золотые перья и улучшения; сразу выставляет характеристики беркута
+applySkin(player.mesh, progress.skin);
+let skinPreview = progress.skin; // окно «Облик»: какой скин примеряем
+
+// после покупки перьев меньше — обновить обе кнопки и оба окна
+function refreshShop() {
+  menu.setProgress(progress);
+  menu.setSkins(progress, skinPreview);
+}
+
 const menu = new Menu({
   hunt: () => startRun('hunt'),
   free: () => startRun('free'),
   resume: () => setPaused(false),
   restart: () => startRun(game.mode),
   menu: toMenu,
+  upgrade: (id) => { if (progress.buy(id)) refreshShop(); },
+  skinPreview: (id) => { skinPreview = id; applySkin(player.mesh, id); menu.setSkins(progress, id); },
+  skinBuy: (id) => { if (progress.buySkin(id)) refreshShop(); },
+  skinSelect: (id) => { if (progress.selectSkin(id)) refreshShop(); },
+  skinsClosed: () => { skinPreview = progress.skin; applySkin(player.mesh, progress.skin); }, // примерка без покупки не остаётся
   quality: (q) => {
     nature.setQuality(q); // меньше травы, цветов и частиц
     renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : 1));
@@ -83,8 +105,14 @@ const menu = new Menu({
   },
   keySens: (k) => { player.keySens = k; },
 });
-game.onOver = (result) => menu.showOver(result);
+game.onOver = (result) => {
+  result.feathers = progress.earn(result.score); // очки забега → золотые перья
+  menu.setProgress(progress);
+  menu.showOver(result);
+};
 menu.setBest(game.best);
+refreshShop();
+menu.setMap(progress);
 menu.show('main');
 
 const pauseBtn = document.getElementById('pause-btn');
@@ -99,7 +127,7 @@ addEventListener('keydown', (e) => {
     e.preventDefault();
     if (game.state === 'playing' && !menu.current) setPaused(true);
     else if (menu.current === 'pause') setPaused(false);
-    else if (menu.current === 'howto' || menu.current === 'settings') menu.back();
+    else if (['howto', 'settings', 'upgrades'].includes(menu.current)) menu.back();
     return;
   }
   // на кнопке пробел и Enter нажимают саму кнопку — не дублируем
@@ -109,11 +137,19 @@ addEventListener('keydown', (e) => {
   }
 });
 
-// Биом по дистанции: stage 0 = Степь, дальше по кругу с плавным переходом
+// Регион по дистанции: stage 0 — Сарыарка, дальше по маршруту по кругу с плавным переходом
 function updateBiome(dist) {
   const stage = Math.floor(dist / CONFIG.biomeEvery);
   const idx = stage % BIOMES.length;
-  if (stage !== biomeStage) { biomeStage = stage; world.setBiome(BIOMES[idx]); }
+  if (stage !== biomeStage) {
+    biomeStage = stage;
+    world.setBiome(BIOMES[idx]);
+    // впервые долетел — регион открывается на карте
+    if (game.state === 'playing' && progress.discover(BIOMES[idx].id)) {
+      game.popup(`Новый регион: ${BIOMES[idx].name}`);
+      menu.setMap(progress);
+    }
+  }
   const t = stage === 0 ? 1 : Math.min(1, (dist - stage * CONFIG.biomeEvery) / CONFIG.biomeBlend);
   applyBiome(scene, idx, t);
   return BIOMES[idx].name;
@@ -131,6 +167,10 @@ function onCatch(kind, pos) {
 const camTarget = new THREE.Vector3();
 let camDive = 0; // 0..1 — насколько быстро беркут падает; камера смотрит ниже, обзор шире
 let camCarry = 0; // 0..1 — беркут несёт добычу: камера опускается, чтобы было видно когти
+let camSkin = 0;  // 0..1 — открыто окно «Облик»: камера показывает беркута спереди-сбоку, справа от панели
+const camSide = new THREE.Vector3(), camLook = new THREE.Vector3(), eagleLook = new THREE.Vector3();
+const camRight = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+let trails = null; // следы крыльев (их создаёт createPostFX при первом кадре)
 let last = performance.now();
 
 function loop(now) {
@@ -145,13 +185,15 @@ function loop(now) {
   }
   const time = now / 1000;
 
+  // в окне «Облик» беркут не слушается мыши: летит ровно по центру, без крена
+  if (menu.current === 'skins') { player.target.x = 0; player.target.y = 0; }
   const step = game.tick(dt, player.boostHeld, player.diveHeld);
   const playing = game.state === 'playing';
   // добыча близко впереди — беркут выпускает когти
   const reach = (dt > 0 ? step / dt : 0) * CONFIG.strikeTime;
-  player.strikeWanted = playing && (world.preyAhead(player.pos, reach) || prey.preyAhead(player.pos, reach));
-  const lunge = reach * CONFIG.strikeLunge / CONFIG.strikeTime;
-  player.lungeWanted = player.strikeWanted && (world.preyAhead(player.pos, lunge) || prey.preyAhead(player.pos, lunge));
+  const preyAhead = (d) => world.preyAhead(player.pos, d) || prey.preyAhead(player.pos, d) || critters.preyAhead(player.pos, d);
+  player.strikeWanted = playing && preyAhead(reach);
+  player.lungeWanted = player.strikeWanted && preyAhead(reach * CONFIG.strikeLunge / CONFIG.strikeTime);
   if (game.state !== 'over') player.update(dt, time, step, playing && game.boosting, playing && game.exhausted, playing && game.diving);
 
   if (playing) {
@@ -162,8 +204,9 @@ function loop(now) {
     else {
       if (hit === 'ground') player.bounce(height(p.x, p.z) + CONFIG.eagleRadius + 0.3);
       for (let n = world.nearMisses(p, CONFIG.eagleRadius); n > 0; n--) game.nearMiss();
-      for (const pos of world.catchPrey(p)) onCatch('marmot', pos);
+      for (const c of world.catchPrey(p)) onCatch(c.kind, c.pos);
       for (const c of prey.catch(p)) onCatch(c.kind, c.pos);
+      for (const c of critters.catch(p)) onCatch(c.kind, c.pos);
     }
   } else if (game.state === 'ready') {
     // на стартовом экране не даём беркуту уйти в землю
@@ -176,6 +219,7 @@ function loop(now) {
   world.update(player.pos, game.dist);
   world.updatePrey(dt, player.pos, dt > 0 ? step / dt : 0, game.diving);
   prey.update(dt, player.pos, dt > 0 ? step / dt : 0);
+  critters.update(dt, player.pos, dt > 0 ? step / dt : 0);
   effects.update(dt);
   const biomeName = updateBiome(game.dist);
   if (game.state !== 'over') nature.update(dt, time, player.pos);
@@ -185,14 +229,36 @@ function loop(now) {
   const p = player.pos;
   camCarry += ((player.carryT > 0 ? 1 : 0) - camCarry) * Math.min(1, dt * 3);
   camTarget.set(p.x * 0.7, p.y + 11 - camCarry * 5, p.z + cameraDistance());
-  camera.position.lerp(camTarget, Math.min(1, dt * 3));
+  camSkin += ((menu.current === 'skins' ? 1 : 0) - camSkin) * Math.min(1, dt * 3);
+  // следы от кончиков крыльев при осмотре выглядят как белые линии — прячем
+  trails ??= scene.getObjectByName('berkut-wing-trails');
+  if (trails) trails.visible = camSkin < 0.05;
+  // «Облик»: спереди-сбоку и чуть сверху, достаточно далеко, чтобы крылья помещались целиком
+  if (camSkin > 0.001) {
+    const k = cameraDistance() / 26; // на узком экране — дальше, иначе крылья не помещаются
+    camSide.set(p.x + 12 * k, p.y + 4, p.z - 19 * k);
+    camSide.y = Math.max(camSide.y, height(camSide.x, camSide.z) + 5); // не залезать в холм
+    camTarget.lerp(camSide, camSkin);
+  }
+  // обычно камера догоняет с запаздыванием; в «Облике» — встаёт точно, иначе беркут «уплывает»
+  camera.position.lerp(camTarget, Math.min(1, Math.max(dt * 3, camSkin ** 3)));
   if (camShake > 0) { // толчок при поимке
     camera.position.x += (Math.random() - 0.5) * 0.6 * camShake;
     camera.position.y += (Math.random() - 0.5) * 0.6 * camShake;
     camShake = Math.max(0, camShake - dt / 0.35);
   }
   camDive += (Math.min(1, Math.max(0, -player.vy / CONFIG.diveMaxFall)) - camDive) * Math.min(1, dt * 4);
-  camera.lookAt(p.x * 0.85, p.y + 1 - camDive * 8, p.z - 30);
+  camLook.set(p.x * 0.85, p.y + 1 - camDive * 8, p.z - 30);
+  // точка взгляда сдвинута так, что беркут оказывается справа от панели
+  if (camSkin > 0.001) {
+    // смотрим мимо беркута так, чтобы он оказался справа от панели, а на узком экране — над ней
+    camRight.subVectors(p, camSide).normalize().cross(UP).normalize();
+    eagleLook.copy(p);
+    if (innerWidth > 760) eagleLook.addScaledVector(camRight, -9);
+    else eagleLook.y -= 7;
+    camLook.lerp(eagleLook, camSkin);
+  }
+  camera.lookAt(camLook);
   // во время рывка и пике угол обзора плавно расширяется
   const targetFov = (game.state === 'playing' && game.boosting ? 68 : 62) + camDive * 12 - camShake * 5; // при поимке — короткое сужение
   if (Math.abs(camera.fov - targetFov) > 0.01) {

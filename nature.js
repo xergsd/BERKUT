@@ -2,7 +2,8 @@
 // облака, пыльца, звёзды, тень беркута, птицы и антилопы. Перенесено из BERKUT 3 без перьев и потоков.
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { height, riverCenter, riverLevel } from './world.js';
+import { height, riverCenter, riverLevel, biomeAt } from './world.js';
+import { BIOMES } from './visuals.js';
 
 const TAU = Math.PI * 2;
 const dummy = new THREE.Object3D(), color = new THREE.Color();
@@ -72,43 +73,47 @@ class NatureChunk {
   place(z) {
     this.z=z;this.group.position.z=z;
     const rand=seeded(Math.round(z)*31+9329);
-    const biome=Math.floor(Math.max(0,-z)/CONFIG.biomeEvery)%4;
-    const dry=biome===1,night=biome===3,alpine=biome===2;
-    const grassColors=dry?['#ab8655','#c4a369','#957346']:['#749342','#99ae5f','#b5b478','#8b9b52'];
+    // растительность региона (regions.js: flora)
+    const f=BIOMES[biomeAt(z)].flora, pine=f.tree==='pine', saxaul=f.tree==='saxaul';
+    const grassColors=f.grass;
     for(let i=0;i<1700;i++) {
       const patch=Math.floor(i/9),x=Math.sin(patch*12.53+z)*152+(rand()-.5)*12, local=Math.cos(patch*5.79)*100+(rand()-.5)*14,wz=z+local;
       const wet=Math.abs(x-riverCenter(wz))<10;
-      const h=.6+rand()*1.9;
-      matrix(this.grass,i,x,height(x,wz),local,wet?0:1,h,1,rand()*TAU);
-      this.grass.setColorAt(i,color.set(grassColors[i%4]));
+      const h=.6+rand()*1.9, bare=(i*0.618)%1>=f.grassShare; // в пустыне трава редкая
+      const show=wet||bare?0:1; // прятать целиком: при нулевой ширине пучок остаётся тёмной чёрточкой
+      matrix(this.grass,i,x,height(x,wz),local,show,h*show,show,rand()*TAU);
+      this.grass.setColorAt(i,color.set(grassColors[i%grassColors.length]));
     }
     for(let i=0;i<96;i++) {
       const patch=Math.floor(i/12),x=(patch%2?-1:1)*(17+patch*9)+Math.sin(i*7)*5;
       const local=Math.sin(patch*9)*86+Math.cos(i*3)*6,wz=z+local;
-      matrix(this.flowers,i,x,height(x,wz)+.55,local,.35,dry?.12:.5,.35,i);
+      const bloom=f.flowers===true?.5:f.flowers==='dry'?.12:0; // в Чарыне мелкие, в пустыне нет
+      matrix(this.flowers,i,x,height(x,wz)+.55,local,bloom?.35:0,bloom,bloom?.35:0,i);
       this.flowers.setColorAt(i,color.set(i%3===0?'#f4c968':i%3===1?'#cf977c':'#b9a5d5'));
     }
     for(let i=0;i<80;i++) {
       const x=(rand()-.5)*340,local=(rand()-.5)*CONFIG.chunkLen,wz=z+local,s=.25+rand()*1.4;
       matrix(this.stones,i,x,height(x,wz),local,s,s*.6,s*.85,rand()*TAU);
-      this.stones.setColorAt(i,color.set(dry?'#ad795b':'#8b8a71').multiplyScalar(.75+rand()*.4));
+      this.stones.setColorAt(i,color.set(f.stone).multiplyScalar(.75+rand()*.4));
     }
     for(let i=0;i<22;i++) {
       const local=(rand()-.5)*CONFIG.chunkLen,wz=z+local;
       // Trees never become invisible obstacles in the flight corridor.
       const x=i<14?riverCenter(wz)+(i%2?1:-1)*(17+rand()*16):-(90+rand()*80);
       const y=height(x,wz),slope=Math.max(Math.abs(height(x+3,wz)-height(x-3,wz)),Math.abs(height(x,wz+3)-height(x,wz-3)));
-      const grow=slope>4?.001:1;
-      const h=(4+rand()*7)*(dry?.55:1)*grow,w=(1.6+rand()*1.8)*grow;
+      const grow=slope>4||!f.tree?.001:1; // без деревьев (Мангистау) — прячем
+      const h=(4+rand()*7)*f.treeSize*grow,w=(1.6+rand()*1.8)*grow*(saxaul?.8:1);
       matrix(this.trunks,i*3,x,y+h*.35,local,.34,h*.8,.34);
       matrix(this.trunks,i*3+1,x-w*.3,y+h*.55,local,.19,h*.4,.19,i,.65);
       matrix(this.trunks,i*3+2,x+w*.3,y+h*.61,local,.16,h*.36,.16,i,-.65);
-      this.crowns.geometry=alpine?this.owner.assets.pine:this.owner.assets.crown;
+      this.crowns.geometry=pine?this.owner.assets.pine:this.owner.assets.crown;
       for(let k=0;k<5;k++) {
-        const off=alpine?0:Math.sin(k*2.4)*w*.64;
-        const scale=alpine?(1-k*.15):(.85+(k%2)*.23);
-        matrix(this.crowns,i*5+k,x+off,y+h*(.57+k*.09),local+(alpine?0:Math.cos(k*2.4)*w*.55),w*scale,h*(alpine?.32:.22),w*scale,i);
-        this.crowns.setColorAt(i*5+k,color.set(dry?'#7d8052':alpine?'#386e5c':'#64834c').multiplyScalar(.85+rand()*.3));
+        const off=pine?0:Math.sin(k*2.4)*w*.64;
+        const scale=pine?(1-k*.15):(.85+(k%2)*.23);
+        // саксаул — низкий, с плоской редкой кроной
+        const thick=pine?.32:saxaul?.12:.22;
+        matrix(this.crowns,i*5+k,x+off,y+h*(.57+k*.09),local+(pine?0:Math.cos(k*2.4)*w*.55),w*scale,h*thick,w*scale,i);
+        this.crowns.setColorAt(i*5+k,color.set(f.crown).multiplyScalar(.85+rand()*.3));
       }
     }
     for(let i=0;i<45;i++) {
@@ -116,7 +121,7 @@ class NatureChunk {
       const slope=Math.abs(height(x+2,wz)-height(x-2,wz));
       const size=slope>4?.001:s;
       matrix(this.bushes,i,x,height(x,wz)+size*.35,local,size,size*.65,size,i);
-      this.bushes.setColorAt(i,color.set(dry?'#9b8d5a':night?'#526658':'#718554'));
+      this.bushes.setColorAt(i,color.set(f.bush));
     }
     for(const b of [this.grass,this.flowers,this.stones,this.trunks,this.crowns,this.bushes]) {
       b.instanceMatrix.needsUpdate=true;if(b.instanceColor)b.instanceColor.needsUpdate=true;
@@ -203,9 +208,11 @@ export class Nature {
   // p — позиция беркута
   update(dt,time,p) {
     this.time.value=time;
-    const phase=Math.max(0,-p.z)/CONFIG.biomeEvery,stage=Math.floor(phase),biome=stage%4;
+    // ночь — у региона с флагом night (сейчас таких нет): звёзды, светлячки, тёмная вода
+    const n=BIOMES.length,phase=Math.max(0,-p.z)/CONFIG.biomeEvery,stage=Math.floor(phase),biome=stage%n;
     const mix=stage===0?1:clamp((phase-stage)*CONFIG.biomeEvery/CONFIG.biomeBlend,0,1);
-    this.night=(biome===3?mix:((biome+3)%4===3?1-mix:0));this.waterMat.uniforms.night.value=this.night;
+    const dark=(b)=>BIOMES[b].night?1:0;
+    this.night=dark((biome+n-1)%n)*(1-mix)+dark(biome)*mix;this.waterMat.uniforms.night.value=this.night;
     this.cloudMat.color.set('#ffe5c5').lerp(color.set('#485775'),this.night);
     for(let i=0;i<16;i++){const c=this.cloudSeeds[i];matrix(this.clouds,i,c.x+Math.sin(time*.025+i)*25,c.y,p.z+c.z,c.s,c.s*.48,1);}
     this.clouds.instanceMatrix.needsUpdate=true;

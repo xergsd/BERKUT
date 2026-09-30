@@ -5,6 +5,12 @@ import { BIOMES, createMarmot } from './visuals.js';
 import { makeFormation, touchesFormation } from './rocks.js';
 const rockPoint = new THREE.Vector3();
 
+// Сурки Сарыарки; остальная добыча со своим поведением — в prey.js и critters.js.
+// hides — прячется в нору, если беркут летит высоко
+const GROUND = {
+  marmot: { make: () => createMarmot(), hides: true },
+};
+
 // ---------- рельеф ----------
 function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, z) {
@@ -36,9 +42,30 @@ function tianshan(x, z) { // острые хребты, высокие стен�
   const r2 = 1 - Math.abs(2 * vnoise(x * 0.02 + 9, z * 0.02) - 1);
   return h + Math.max(0, Math.abs(x) - CONFIG.laneHalfWidth + 5) * (0.7 + r2 * 0.8);
 }
-// по индексу BIOMES: Степь, Чарын, Тянь-Шань, Ночь (степной рельеф)
-const RELIEF = [steppe, charyn, tianshan, steppe];
-const STRATA = [0, 1, 0.3, 0]; // насколько заметны полосы пород на крутых склонах
+function burabay(x, z) { // лесистые холмы и округлые гранитные «шапки»
+  let h = vnoise(x * 0.01, z * 0.01) * 16 + vnoise(x * 0.04, z * 0.04) * 5 - 4;
+  h += ss(0.7, 0.85, vnoise(x * 0.03 + 7, z * 0.03 - 3)) * 10;
+  return h + Math.max(0, Math.abs(x) - CONFIG.laneHalfWidth) * 0.6;
+}
+function altai(x, z) { // высокие горы с округлыми склонами, поросшими тайгой
+  const r = 1 - Math.abs(2 * vnoise(x * 0.01, z * 0.01) - 1);
+  const h = r * 22 + vnoise(x * 0.04, z * 0.04) * 6 - 6;
+  return h + Math.max(0, Math.abs(x) - CONFIG.laneHalfWidth + 5) * (0.9 + vnoise(x * 0.02, z * 0.02) * 0.6);
+}
+function desert(x, z) { // барханы: гряды поперёк пути с острым гребнем, пологий подъём по краям
+  const warp = vnoise(x * 0.01, z * 0.01) * 6;
+  const dune = (0.5 + 0.5 * Math.sin(z * 0.035 + x * 0.012 + warp)) ** 2 * 9;
+  return dune + vnoise(x * 0.008, z * 0.008) * 10 + 2 + Math.max(0, Math.abs(x) - CONFIG.laneHalfWidth) * 0.25;
+}
+function mangystau(x, z) { // плоское плато, столы-останцы и белые меловые обрывы-ступени по краям
+  // плато на 8–12 м: по нему бежит стадо джейранов, беркут должен доставать без пике
+  let h = vnoise(x * 0.015, z * 0.015) * 4 + 8;
+  h += terrace(ss(0.66, 0.74, vnoise(x * 0.02 - 30, z * 0.02 + 11)) * 20, 10);
+  const edge = CONFIG.laneHalfWidth - 6 + (vnoise(8.1, z * 0.01) - 0.5) * 20;
+  return h + terrace(Math.max(0, Math.abs(x) - edge) * 1.3 + vnoise(x * 0.04, z * 0.04) * 4, 12);
+}
+// по полю relief региона (regions.js)
+const RELIEF = { steppe, charyn, tianshan, burabay, altai, desert, mangystau };
 
 // Какие два биома смешиваются в точке z: [предыдущий, текущий, t 0..1]
 function biomeMix(z) {
@@ -51,9 +78,9 @@ function biomeMix(z) {
 
 function rawHeight(x, z) {
   const [a, b, t] = biomeMix(z);
-  const hb = RELIEF[b % RELIEF.length](x, z);
+  const hb = RELIEF[BIOMES[b].relief](x, z);
   if (t >= 1) return hb;
-  return RELIEF[a % RELIEF.length](x, z) * (1 - t) + hb * t;
+  return RELIEF[BIOMES[a].relief](x, z) * (1 - t) + hb * t;
 }
 
 // Река справа, за пределами коридора полёта. Вся растительность берёт высоту отсюда же.
@@ -68,7 +95,7 @@ export function height(x, z) {
   return THREE.MathUtils.lerp(riverLevel(z) - 3.5, h, ss(10, 22, d)); // русло
 }
 
-// Индекс биома в точке z, без учёта плавного перехода: 0 Степь, 1 Чарын, 2 Тянь-Шань, 3 Ночь
+// Индекс региона (BIOMES / regions.js) в точке z, без учёта плавного перехода
 export function biomeAt(z) { return Math.floor(Math.max(0, -z) / CONFIG.biomeEvery) % BIOMES.length; }
 
 const _ca = new THREE.Color(), _cb = new THREE.Color();
@@ -93,11 +120,15 @@ export class World {
       scene.add(r);
       this.rocks.push(r);
     }
+    // добыча на земле: у каждого вида свой запас; появляется только в регионе, где этот вид живёт
     this.marmots = [];
-    for (let i = 0; i < CONFIG.marmotCount; i++) {
-      const m = createMarmot();
-      scene.add(m);
-      this.marmots.push(m);
+    for (const [kind, { make }] of Object.entries(GROUND)) {
+      for (let i = 0; i < CONFIG.marmotCount; i++) {
+        const m = make();
+        m.userData.kind = kind;
+        scene.add(m);
+        this.marmots.push(m);
+      }
     }
     this.reset();
   }
@@ -118,7 +149,7 @@ export class World {
     const [a, b, t] = biomeMix(z);
     this.groundColor(this.palettes[b], h, ny, out);
     if (t < 1) out.lerp(this.groundColor(this.palettes[a], h, ny, _ca), 1 - t);
-    const strata = STRATA[a % STRATA.length] * (1 - t) + STRATA[b % STRATA.length] * t;
+    const strata = BIOMES[a].strata * (1 - t) + BIOMES[b].strata * t; // полосы пород
     const steep = ss(0.18, 0.45, 1 - ny);
     const patch = vnoise(x * 0.015 + 100, z * 0.015) - 0.5;     // крупные пятна
     let light = patch * 0.1 + strata * steep * Math.sin(h * 0.8) * 0.06; // полосы пород
@@ -167,7 +198,7 @@ export class World {
   buildRock(r,x,z,seed) {
     const [a,b,t] = biomeMix(z), biome=t<.5?a:b;
     const floor=height(x,z);
-    const formation=makeFormation(biome,seed,(dx,dz)=>height(x+dx,z+dz)-floor);
+    const formation=makeFormation(BIOMES[biome].rocks,seed,(dx,dz)=>height(x+dx,z+dz)-floor);
     r.geometry.dispose(); r.geometry=formation.geometry;
     r.position.set(x,floor,z); r.rotation.set(0,0,0); r.scale.set(1,1,1);
     r.userData={...formation,seed,near:false,passed:false};
@@ -194,8 +225,8 @@ export class World {
     r.userData.near=near;r.userData.passed=passed;
   }
 
-  // Сурок сидит только на пригорке: беркут не опускается ниже altitudeMid - altitudeRange,
-  // и над низиной до сурка было бы не дотянуться. Не нашлось пригорка — место пустует.
+  // Добыча сидит только на пригорке: беркут не опускается ниже altitudeMid - altitudeRange,
+  // и над низиной до неё было бы не дотянуться. Не нашлось пригорка — место пустует.
   placeMarmot(m, z) {
     const minGround = CONFIG.altitudeMid - CONFIG.altitudeRange - CONFIG.marmotCatchAlt + 2;
     const u = m.userData;
@@ -207,7 +238,7 @@ export class World {
     u.body.visible = true;
     m.visible = false;
     m.position.z = z;
-    if (biomeAt(z) !== 0) return; // сурки живут только в Степи
+    if (BIOMES[biomeAt(z)].prey !== u.kind) return; // этот вид здесь не живёт
     for (let i = 0; i < 12; i++) {
       const x = (Math.random() - 0.5) * (CONFIG.controlRangeX - 5) * 2;
       const mz = z + (Math.random() - 0.5) * 60;
@@ -237,21 +268,21 @@ export class World {
     }
   }
 
-  // Сурки: переносятся вперёд, замечают беркута, летящего высоко, и прячутся.
-  // speed — текущая скорость беркута, м/с; пикирующего беркута сурок замечает позже
+  // Добыча на земле: переносится вперёд; сурок и песчанка замечают беркута, летящего высоко, и прячутся.
+  // speed — текущая скорость беркута, м/с; пикирующего беркута замечают позже
   updatePrey(dt, playerPos, speed, diving = false) {
     const alert = speed * CONFIG.marmotAlertTime * (diving ? CONFIG.diveAlertMult : 1);
     for (const m of this.marmots) {
       const u = m.userData;
       if (m.position.z > playerPos.z + 30) {
-        const farthest = Math.min(...this.marmots.map((k) => k.position.z));
+        const farthest = Math.min(...this.marmots.filter((k) => k.userData.kind === u.kind).map((k) => k.position.z));
         this.placeMarmot(m, farthest - CONFIG.marmotSpacing * (0.7 + Math.random() * 0.6));
         continue;
       }
       const ahead = playerPos.z - m.position.z;
-      if (u.state === 'up' && ahead > 0 && ahead < alert &&
+      if (u.state === 'up' && GROUND[u.kind].hides && ahead > 0 && ahead < alert &&
           playerPos.y - m.position.y > CONFIG.marmotSneakAlt) u.state = 'hiding';
-      // беркут близко, а сурок не спрятался — замирает и откидывается назад, глядя вверх
+      // беркут близко, а добыча не спряталась — замирает и откидывается назад, глядя вверх
       const close = u.state === 'up' && ahead > 0 && ahead < Math.max(30, speed * CONFIG.strikeTime) &&
         Math.abs(playerPos.x - m.position.x) < 15;
       u.body.rotation.x += ((close ? -0.35 : 0) - u.body.rotation.x) * Math.min(1, dt * 6);
@@ -263,16 +294,16 @@ export class World {
     }
   }
 
-  // Есть ли впереди, ближе dist метров, сурок, до которого можно дотянуться, — пора выпускать когти
+  // Есть ли впереди, ближе dist метров, добыча на земле, до которой можно дотянуться, — пора выпускать когти
   preyAhead(pos, dist) {
     return this.marmots.some((m) => {
       const u = m.userData, ahead = pos.z - m.position.z;
       return (u.state === 'up' || u.state === 'hiding') && !u.checked && ahead > 0 && ahead < dist &&
-        Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius * 2 && pos.y - m.position.y < CONFIG.marmotCatchAlt * 2;
+        Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius * CONFIG.clawMult * 2 && pos.y - m.position.y < CONFIG.marmotCatchAlt * 2;
     });
   }
 
-  // Где беркут только что схватил сурков (позиции). Проверка в момент пролёта над сурком.
+  // Кого беркут только что схватил на земле: список { kind, pos }. Проверка в момент пролёта над добычей.
   catchPrey(pos) {
     const caught = [];
     for (const m of this.marmots) {
@@ -280,11 +311,11 @@ export class World {
       if (u.checked || pos.z > m.position.z) continue;
       u.checked = true;
       const catchable = u.state === 'up' || (u.state === 'hiding' && u.hide < CONFIG.marmotCatchHide);
-      if (catchable && Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius &&
+      if (catchable && Math.abs(pos.x - m.position.x) < CONFIG.marmotCatchRadius * CONFIG.clawMult &&
           pos.y - m.position.y < CONFIG.marmotCatchAlt) {
         u.state = 'caught';
         u.body.visible = false;
-        caught.push(m.position.clone());
+        caught.push({ kind: u.kind, pos: m.position.clone() });
       }
     }
     return caught;

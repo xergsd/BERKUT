@@ -1,11 +1,11 @@
 // prey.js — добыча Чарына и Тянь-Шаня: кеклики в небе и козлята тау-теке на вершинах скальных выступов у стен.
-// Сурки Степи — в world.js. Ночью добычи нет. Кеклики и козлята не убегают — их можно просто поймать.
+// Сурки — в world.js, зайцы, улары, песчанки и джейраны — в critters.js. Кеклики и козлята не убегают.
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { createKeklik, createIbexKid, createSpur, spurMaterial, SPUR_TOP, SPUR_BASE } from './visuals.js';
+import { BIOMES, createKeklik, createIbexKid, createSpur, spurMaterial, SPUR_TOP, SPUR_BASE } from './visuals.js';
 import { height, biomeAt } from './world.js';
 
-const CHARYN = 1, TIANSHAN = 2;
+const livesAt = (kind, z) => BIOMES[biomeAt(z)].prey === kind; // водится ли этот вид в регионе под z
 const top = () => CONFIG.altitudeMid + CONFIG.altitudeRange; // потолок полёта
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
 
@@ -33,8 +33,6 @@ export class Prey {
       scene.add(k, k.userData.spur);
       this.kids.push(k);
     }
-    // скалы не должны загораживать подлёт к козлятам — как к суркам
-    world.extraTargets = () => this.kids;
     this.reset();
   }
 
@@ -60,7 +58,7 @@ export class Prey {
     u.checked = false;
     k.visible = false;
     k.position.z = z;
-    if (biomeAt(z) !== CHARYN) return;
+    if (!livesAt('keklik', z)) return;
     let ground = -Infinity;
     for (let x = -60; x <= 60; x += 10) ground = Math.max(ground, height(x, z));
     const lo = Math.max(20, ground + 10), hi = top() - 4;
@@ -89,7 +87,7 @@ export class Prey {
     k.visible = false;
     u.spur.visible = false;
     k.position.z = z;
-    if (biomeAt(z) !== TIANSHAN) return;
+    if (!livesAt('ibex', z)) return;
     for (let i = 0; i < 12; i++) {
       const side = Math.random() < 0.5 ? -1 : 1;
       const x = side * (49 + Math.random() * 5), mz = z + (Math.random() - 0.5) * 60;
@@ -188,8 +186,9 @@ export class Prey {
   preyAhead(pos, dist) {
     const near = (k, r, dy) => !k.userData.checked && pos.z - k.position.z > 0 && pos.z - k.position.z < dist &&
       Math.abs(pos.x - k.position.x) < r && Math.abs(pos.y - k.position.y) < dy;
-    return this.kekliks.some((k) => k.userData.state === 'fly' && near(k, CONFIG.keklikCatchRadius * 2, CONFIG.keklikCatchRadius * 2)) ||
-      this.kids.some((k) => k.userData.state === 'up' && near(k, CONFIG.ibexCatchRadius * 2, CONFIG.ibexCatchAlt * 2));
+    const kr = CONFIG.keklikCatchRadius * CONFIG.clawMult, ir = CONFIG.ibexCatchRadius * CONFIG.clawMult;
+    return this.kekliks.some((k) => k.userData.state === 'fly' && near(k, kr * 2, kr * 2)) ||
+      this.kids.some((k) => k.userData.state === 'up' && near(k, ir * 2, CONFIG.ibexCatchAlt * 2));
   }
 
   // Удар о скальный выступ под козлёнком — как о скалу. Выступ — наклонный усечённый конус.
@@ -213,7 +212,7 @@ export class Prey {
       const u = k.userData;
       if (u.checked || pos.z > k.position.z) continue;
       u.checked = true;
-      if (u.state === 'fly' && pos.distanceTo(k.position) < CONFIG.keklikCatchRadius) {
+      if (u.state === 'fly' && pos.distanceTo(k.position) < CONFIG.keklikCatchRadius * CONFIG.clawMult) {
         u.state = 'caught';
         k.visible = false;
         caught.push({ kind: 'keklik', pos: k.position.clone() });
@@ -224,7 +223,7 @@ export class Prey {
       if (u.checked || pos.z > k.position.z) continue;
       u.checked = true;
       const dy = pos.y - k.position.y;
-      if (u.state === 'up' && Math.abs(pos.x - k.position.x) < CONFIG.ibexCatchRadius &&
+      if (u.state === 'up' && Math.abs(pos.x - k.position.x) < CONFIG.ibexCatchRadius * CONFIG.clawMult &&
           dy < CONFIG.ibexCatchAlt && dy > -2) {
         u.state = 'caught';
         u.body.visible = false;

@@ -1,8 +1,9 @@
-// effects.js — короткие эффекты поимки: пыль с земли или скалы, разлетающиеся перья кеклика
+// effects.js — короткие эффекты поимки: пыль с земли или скалы, разлетающиеся перья птиц
 import * as THREE from 'three';
 
 const DUST = 14, FEATHERS = 12;
-const DUST_COLOR = { marmot: '#b89a6e', ibex: '#9aa3ab' };
+const DUST_COLOR = { marmot: '#b89a6e', ibex: '#9aa3ab', gerbil: '#d6b27a', hare: '#8a7a5a', gazelle: '#d8cdb8' };
+const BIRDS = ['keklik', 'ular']; // у птиц — перья, у зверей — пыль
 
 function softTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -35,9 +36,9 @@ export class Effects {
     }
   }
 
-  // Облачко пыли у сурка и козлёнка, перья у кеклика
+  // Облачко пыли у зверей, перья у птиц
   burst(kind, pos) {
-    if (kind === 'keklik') {
+    if (BIRDS.includes(kind)) {
       for (const f of this.feathers) {
         const u = f.userData;
         f.position.copy(pos);

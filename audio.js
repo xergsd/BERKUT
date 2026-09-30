@@ -102,10 +102,14 @@ export function createFlightAudioGraph(context) {
       thud.start(hit); thud.stop(hit + 0.4);
       // голос добычи
       const voice = time + 0.14;
-      if (kind === 'ibex') { this.bleat(0, voice); return; }
-      const calls = kind === 'keklik'
-        ? [[voice, 'square', 1900, 1400, 0.07, 0.07], [voice + 0.11, 'square', 1900, 1400, 0.07, 0.07]] // «чак-чак»
-        : [[voice, 'sine', 2700, 2300, 0.22, 0.15]];                                                      // свист сурка
+      if (kind === 'ibex' || kind === 'gazelle') { this.bleat(0, voice); return; }
+      // [начало, форма волны, частота от, до, длина, громкость]
+      const calls = {
+        keklik: [[voice, 'square', 1900, 1400, 0.07, 0.07], [voice + 0.11, 'square', 1900, 1400, 0.07, 0.07]], // «чак-чак»
+        ular: [[voice, 'sine', 1500, 2100, 0.25, 0.14]],               // переливчатый свист
+        gerbil: [[voice, 'sine', 3400, 3000, 0.1, 0.12], [voice + 0.14, 'sine', 3400, 3000, 0.08, 0.1]], // писк
+        hare: [[voice, 'sawtooth', 900, 700, 0.2, 0.06]],             // короткий крик
+      }[kind] ?? [[voice, 'sine', 2700, 2300, 0.22, 0.15]];           // свист сурка
       for (const [start, type, from, to, length, peak] of calls) {
         const osc = context.createOscillator(), g = context.createGain(), tone = filter('bandpass', (from + to) / 2, 1);
         osc.type = type;

@@ -4,19 +4,11 @@
 //  от них зависит остальной код.
 // ================================================================
 import * as THREE from 'three';
+import { REGIONS } from './regions.js';
 
-// ---------- палитры биомов ----------
-// ground: 4 цвета от низа к верху (низина, склон, скала, снег)
-export const BIOMES = [
-  { name: 'Степь',     fog: '#e7c99e', skyTop: '#477ba2', skyMid: '#dfc7a6',
-    ground: ['#78974f', '#b2aa6b', '#8e7854', '#fff4ea'], rock: '#847154', sun: '#fff1c9' },
-  { name: 'Чарын',     fog: '#f2a07a', skyTop: '#6a5aa8', skyMid: '#f0806a',
-    ground: ['#d9894a', '#c8603a', '#9c3d2c', '#f5d6c0'], rock: '#6e2e22', sun: '#ffe2b0' },
-  { name: 'Тянь-Шань', fog: '#b9cfda', skyTop: '#386d9a', skyMid: '#a5c5d5',
-    ground: ['#779775', '#8d9a95', '#71828d', '#ffffff'], rock: '#657986', sun: '#fff6e8' },
-  { name: 'Ночь',      fog: '#2a3358', skyTop: '#0b1030', skyMid: '#34406e',
-    ground: ['#3d4a5e', '#4d5670', '#3a3f5c', '#c8d4f0'], rock: '#252a44', sun: '#e8eeff' },
-];
+// ---------- регионы ----------
+// Палитры и всё остальное о регионах — в regions.js; BIOMES — прежнее имя, по порядку маршрута
+export const BIOMES = REGIONS;
 
 // ---------- беркут ----------
 // Возвращает Group, «нос» смотрит в -Z. Внутри wingL / wingR — точки вращения у плеча.
@@ -367,15 +359,19 @@ export function createEagle() {
   return eagle;
 }
 
-// ---------- сурок ----------
-// Возвращает Group: холмик с норой и userData.body — стоящий «столбиком» сурок,
-// мордой к +Z (навстречу беркуту). Геймплей опускает body вниз, когда сурок прячется.
-let marmotMats = null;
-export function createMarmot() {
+// ---------- сурок и песчанка ----------
+// Возвращает Group: холмик с норой и userData.body — стоящий «столбиком» зверёк,
+// мордой к +Z (навстречу беркуту). Геймплей опускает body вниз, когда зверёк прячется.
+// Песчанка — та же фигура, меньше и песочного цвета.
+export const MARMOT = { fur: '#b07a42', belly: '#dcb47c', dark: '#4a3020', dirt: '#7a5a3a', scale: 1.3 };
+// рыжая песчанка на тёмном холмике — иначе сливается с песком; glow — размер свечения (0 — нет)
+export const GERBIL = { fur: '#c98d4a', belly: '#f5e6c8', dark: '#2a1a10', dirt: '#8a5a30', scale: 1.1, glow: 5.5 };
+const marmotMats = new Map();
+export function createMarmot(look = MARMOT) {
   const lam = (color) => new THREE.MeshLambertMaterial({ color });
-  marmotMats ||= { fur: lam('#b07a42'), belly: lam('#dcb47c'), dark: lam('#4a3020'),
-    dirt: lam('#7a5a3a'), hole: new THREE.MeshBasicMaterial({ color: '#1a120c' }) };
-  const m = marmotMats, ball = new THREE.IcosahedronGeometry(1, 1);
+  if (!marmotMats.has(look)) marmotMats.set(look, { fur: lam(look.fur), belly: lam(look.belly), dark: lam(look.dark),
+    dirt: lam(look.dirt), hole: new THREE.MeshBasicMaterial({ color: '#1a120c' }) });
+  const m = marmotMats.get(look), ball = new THREE.IcosahedronGeometry(1, 1);
   const part = (mat, sx, sy, sz, x, y, z) => {
     const p = new THREE.Mesh(ball, mat);
     p.scale.set(sx, sy, sz); p.position.set(x, y, z);
@@ -403,9 +399,48 @@ export function createMarmot() {
     part(m.fur, 0.14, 0.2, 0.14, 0.3, 1.95, 0.62),
     part(m.dark, 0.2, 0.2, 0.55, 0, 0.45, -0.75),    // хвост
   );
+  if (look.glow) { // в body — исчезает вместе с пойманным
+    const glow = preyGlow(look.glow);
+    glow.position.y = 2;
+    body.add(glow);
+  }
   group.add(body);
   group.userData.body = body;
-  group.scale.setScalar(1.3);
+  group.scale.setScalar(look.scale);
+  return group;
+}
+
+// ---------- заяц ----------
+// Group: сидящий заяц мордой к +Z, userData.body — сам заяц (без норы). Длинные уши, белый хвостик.
+let hareMats = null;
+export function createHare() {
+  const lam = (color) => new THREE.MeshLambertMaterial({ color });
+  hareMats ||= { fur: lam('#9a8a74'), belly: lam('#e8e0d0'), white: lam('#f6f3ee'), dark: lam('#2a221a'), tip: lam('#3a3028') };
+  const m = hareMats, group = new THREE.Group(), body = new THREE.Group();
+  body.add(
+    facet(m.fur, 0.55, 0.6, 0.85, 0, 0.8, -0.05),     // туловище
+    facet(m.fur, 0.5, 0.5, 0.5, 0, 0.6, -0.35),       // задние бёдра
+    facet(m.belly, 0.4, 0.4, 0.5, 0, 0.62, 0.25),     // светлая грудь
+    facet(m.fur, 0.34, 0.34, 0.42, 0, 1.45, 0.55),    // голова
+    facet(m.belly, 0.16, 0.12, 0.14, 0, 1.36, 0.92),  // мордочка
+    facet(m.white, 0.18, 0.18, 0.16, 0, 0.85, -0.9),  // хвостик
+  );
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), m.dark);
+    eye.position.set(side * 0.24, 1.55, 0.72);
+    const ear = new THREE.Group();
+    ear.position.set(side * 0.12, 1.72, 0.45); ear.rotation.set(-0.35, 0, -side * 0.18);
+    ear.add(facet(m.fur, 0.09, 0.48, 0.15, 0, 0.45, 0), facet(m.tip, 0.07, 0.1, 0.12, 0, 0.9, 0));
+    body.add(eye, ear,
+      facet(m.fur, 0.1, 0.32, 0.1, side * 0.2, 0.3, 0.45),         // передние лапы
+      facet(m.fur, 0.14, 0.1, 0.48, side * 0.3, 0.1, -0.1));       // длинные задние лапы
+  }
+  const glow = preyGlow(4);
+  glow.position.y = 1.3;
+  body.add(glow); // в body — исчезает вместе с пойманным
+  group.add(body);
+  group.userData.body = body;
+  group.scale.setScalar(1.8);
   return group;
 }
 
@@ -438,13 +473,16 @@ const lam = (color) => new THREE.MeshLambertMaterial({ color });
 
 // ---------- кеклик ----------
 // Group клювом к +Z, масштаб 1.8. userData: wingL / wingR — плечо (rotation.z — взмах),
-// у каждого крыла userData.hand — кисть с маховыми перьями (сгиб); head, tail.
-let keklikMats = null;
-export function createKeklik() {
-  keklikMats ||= { back: lam('#9a8878'), grey: lam('#a3a9b3'), belly: lam('#e6cfa3'), cream: lam('#f1e6cf'),
-    black: lam('#1b1716'), chestnut: lam('#8a4a2a'), red: lam('#d23a2a'), rufous: lam('#b5653a'),
-    primary: lam('#7a6b5e'), leg: lam('#d06a5a') };
-  const m = keklikMats;
+// у каждого крыла userData.hand — кисть с маховыми перьями (сгиб); head, tail, legs.
+// Улар — та же птица в серо-белом оперении, стоящая на земле (createUlar).
+export const KEKLIK = { back: '#9a8878', grey: '#a3a9b3', belly: '#e6cfa3', cream: '#f1e6cf', black: '#1b1716',
+  chestnut: '#8a4a2a', red: '#d23a2a', rufous: '#b5653a', primary: '#7a6b5e', leg: '#d06a5a' };
+export const ULAR = { back: '#7e8288', grey: '#9aa0a8', belly: '#ece8e0', cream: '#f7f5f0', black: '#34302c',
+  chestnut: '#6a5444', red: '#e08a3a', rufous: '#8e8274', primary: '#6a6560', leg: '#e0a050' };
+const keklikMats = new Map();
+export function createKeklik(look = KEKLIK) {
+  if (!keklikMats.has(look)) keklikMats.set(look, Object.fromEntries(Object.entries(look).map(([k, c]) => [k, lam(c)])));
+  const m = keklikMats.get(look);
   const group = new THREE.Group();
 
   // туловище: серо-бурая спина, серо-голубая грудь, песочное брюхо
@@ -500,11 +538,12 @@ export function createKeklik() {
   group.add(tail);
 
   // лапки поджаты в полёте
-  for (const side of [-1, 1]) {
+  const legs = [-1, 1].map((side) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.03, 0.26, 5), m.leg);
     leg.position.set(side * 0.1, -0.34, -0.12); leg.rotation.x = Math.PI / 2 - 0.3;
     group.add(leg);
-  }
+    return leg;
+  });
 
   // крылья: плечо с кроющими перьями и кисть с пятью маховыми
   for (const side of [-1, 1]) {
@@ -525,6 +564,7 @@ export function createKeklik() {
     group.userData[side < 0 ? 'wingL' : 'wingR'] = wing;
   }
   group.userData.head = head;
+  group.userData.legs = legs;
   group.userData.tail = tail;
   group.add(preyGlow(4.5));
   group.scale.setScalar(1.8);
@@ -534,18 +574,27 @@ export function createKeklik() {
 // ---------- козлёнок тау-теке ----------
 // Group: скальный уступ и userData.body — козлёнок мордой к +Z, масштаб 2.2.
 // body.userData: neck (поворот головы), ears, tail, legs — для движений на уступе и в когтях.
-let ibexMats = null;
-export function createIbexKid() {
-  // светло-песочная шерсть и тёмный уступ — силуэт читается на серой скале
-  ibexMats ||= { coat: lam('#e0c28e'), light: lam('#f6ecd9'), stripe: lam('#5a3d26'), black: lam('#2a2019'),
-    horn: lam('#6d5c46'), nose: lam('#3b2a1c'), ledge: lam('#454c55'), pebble: lam('#5a626b') };
-  const m = ibexMats;
+// Джейранёнок — та же фигура без рожек и уступа, песочный с тёмной полосой (createGazelle).
+// светло-песочная шерсть и тёмный уступ — силуэт читается на серой скале
+export const IBEX = { coat: '#e0c28e', light: '#f6ecd9', stripe: '#5a3d26', black: '#2a2019', horn: '#6d5c46',
+  nose: '#3b2a1c', ledge: '#454c55', pebble: '#5a626b', horns: true, hasLedge: true, glowSize: 5 };
+export const GAZELLE = { coat: '#d9b27e', light: '#fbf5ea', stripe: '#7a4a2a', black: '#2a2019', horn: '#3b2a1c',
+  nose: '#3b2a1c', ledge: '#454c55', pebble: '#5a626b', horns: false, hasLedge: false, glowSize: 6.5 };
+// взрослый джейран из стада: крупнее, с рожками, без свечения — его не поймать
+export const GAZELLE_ADULT = { ...GAZELLE, horns: true, glowSize: 0, scale: 3.2 };
+const ibexMats = new Map();
+export function createIbexKid(look = IBEX) {
+  if (!ibexMats.has(look)) ibexMats.set(look, Object.fromEntries(Object.entries(look)
+    .filter(([, c]) => typeof c === 'string').map(([k, c]) => [k, lam(c)])));
+  const m = ibexMats.get(look);
   const group = new THREE.Group();
-  const ledge = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), m.ledge);
-  ledge.scale.set(2.4, 0.7, 1.9); ledge.position.y = -0.3;
-  group.add(ledge);
-  for (const [x, z, s] of [[1.5, 0.9, 0.3], [-1.7, -0.6, 0.25], [1.2, -1.1, 0.2], [-1.3, 1.0, 0.18]])
-    group.add(facet(m.pebble, s, s * 0.7, s, x, 0.25, z));
+  if (look.hasLedge) {
+    const ledge = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), m.ledge);
+    ledge.scale.set(2.4, 0.7, 1.9); ledge.position.y = -0.3;
+    group.add(ledge);
+    for (const [x, z, s] of [[1.5, 0.9, 0.3], [-1.7, -0.6, 0.25], [1.2, -1.1, 0.2], [-1.3, 1.0, 0.18]])
+      group.add(facet(m.pebble, s, s * 0.7, s, x, 0.25, z));
+  }
 
   const body = new THREE.Group();
   // туловище на длинных ногах: грудь, зад, светлое брюхо, тёмный «ремень» по спине
@@ -577,7 +626,7 @@ export function createIbexKid() {
     head.add(eye);
     const horn = new THREE.CatmullRomCurve3([[0, 0, 0], [0, 0.12, -0.03], [0, 0.2, -0.12], [0, 0.22, -0.2]]
       .map(([x, y, z]) => new THREE.Vector3(x + side * 0.08, y + 0.18, z + 0.02)));
-    head.add(new THREE.Mesh(new THREE.TubeGeometry(horn, 8, 0.03, 5, false), m.horn));
+    if (look.horns) head.add(new THREE.Mesh(new THREE.TubeGeometry(horn, 8, 0.03, 5, false), m.horn));
   }
   const ears = [-1, 1].map((side) => {
     const ear = new THREE.Group();
@@ -614,16 +663,38 @@ export function createIbexKid() {
     legs.push(leg);
   }
 
-  const glow = preyGlow(5);
-  glow.position.y = 1.6;
-  body.add(glow); // в body — исчезает вместе с пойманным козлёнком
+  if (look.glowSize) {
+    const glow = preyGlow(look.glowSize);
+    glow.position.y = 1.6;
+    body.add(glow); // в body — исчезает вместе с пойманным
+  }
   body.userData = { neck, head, ears, tail, legs };
   group.add(body);
   group.userData.body = body;
-  group.scale.setScalar(2.2);
+  group.scale.setScalar(look.scale ?? 2.2);
   return group;
 }
 
+
+// ---------- улар и джейранёнок: добыча Алтая и Мангистау на земле ----------
+// Улар стоит на земле: крылья сложены вдоль тела, лапы вниз. userData.body — птица.
+export function createUlar() {
+  const bird = createKeklik(ULAR);
+  for (const [wing, side] of [[bird.userData.wingL, -1], [bird.userData.wingR, 1]]) {
+    wing.rotation.set(0, side * 1.4, -side * 0.1);
+    wing.userData.hand.rotation.y = side * 0.3;
+  }
+  for (const leg of bird.userData.legs) { leg.rotation.x = 0; leg.position.y = -0.47; }
+  bird.position.y = 0.6 * 1.8; // лапы касаются земли
+  bird.traverse((o) => { if (o.isSprite) o.scale.multiplyScalar(1.3); }); // на открытом склоне — свечение крупнее
+  const group = new THREE.Group();
+  group.add(bird);
+  group.userData.body = bird;
+  return group;
+}
+
+export function createGazelle() { return createIbexKid(GAZELLE); }
+export function createGazelleAdult() { return createIbexKid(GAZELLE_ADULT); }
 
 // ---------- скальный выступ Тянь-Шаня ----------
 // Гранёный зуб от подножия стены до плоской площадки, на которой стоит козлёнок.
@@ -737,7 +808,7 @@ export function applyBiome(scene, i, t) {
   mixHex(from.fog, to.fog, t, scene.fog.color);
   mixHex(from.sun, to.sun, t, sky.sun.material.color);
   // ночью свет тусклее и холоднее
-  const night = (n) => (n.name === 'Ночь' ? 1 : 0);
+  const night = (n) => (n.night ? 1 : 0);
   const k = night(from) + (night(to) - night(from)) * t;
   sky.hemi.intensity = 0.85 - 0.40 * k;
   sky.dir.intensity = 1.1 - 0.6 * k;

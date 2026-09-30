@@ -1,12 +1,17 @@
 // game.js — состояние игры, очки, выносливость, рекорд, HUD
 // Режимы: 'hunt' — охота (обычная игра), 'free' — свободный полёт: без смерти, сил и очков.
 import { CONFIG } from './config.js';
+import { BIOMES } from './visuals.js';
 
-// Добыча по ландшафтам: сколько сил и очков даёт
+// Добыча по регионам: сколько сил и очков даёт
 const PREY = {
-  marmot: { name: 'Сурок', stamina: CONFIG.marmotStamina, points: CONFIG.marmotPoints },
-  keklik: { name: 'Кеклик', stamina: CONFIG.keklikStamina, points: CONFIG.keklikPoints },
-  ibex: { name: 'Козлёнок', stamina: CONFIG.ibexStamina, points: CONFIG.ibexPoints },
+  marmot: { name: 'Сурок', stamina: CONFIG.marmotStamina, points: CONFIG.marmotPoints },      // Сарыарка
+  hare: { name: 'Заяц', stamina: CONFIG.hareStamina, points: CONFIG.harePoints },            // Бурабай
+  ular: { name: 'Улар', stamina: CONFIG.ularStamina, points: CONFIG.ularPoints },            // Алтай
+  keklik: { name: 'Кеклик', stamina: CONFIG.keklikStamina, points: CONFIG.keklikPoints },    // Чарын
+  ibex: { name: 'Козлёнок', stamina: CONFIG.ibexStamina, points: CONFIG.ibexPoints },        // Тянь-Шань
+  gerbil: { name: 'Песчанка', stamina: CONFIG.gerbilStamina, points: CONFIG.gerbilPoints },  // Кызылкум
+  gazelle: { name: 'Джейранёнок', stamina: CONFIG.gazelleStamina, points: CONFIG.gazellePoints }, // Мангистау
 };
 
 // Рекорд — лучший по очкам забег: { score, dist }
@@ -54,7 +59,7 @@ export class Game {
     this.combo = 0;           // трюков подряд
     this.comboTimer = 0;
     this.nearMisses = 0;
-    this.caught = { marmot: 0, keklik: 0, ibex: 0 };
+    this.caught = Object.fromEntries(Object.keys(PREY).map((k) => [k, 0]));
     this.diveCatches = 0;
   }
 
@@ -102,7 +107,7 @@ export class Game {
       this.diveTimer = this.diving ? CONFIG.diveCatchWindow : Math.max(0, this.diveTimer - dt);
       if (this.free) this.stamina = CONFIG.staminaMax; // в свободном полёте силы не кончаются
       // силы тратятся всегда, рывок — быстрее, пике — медленнее, ночью — медленнее; восполняет только добыча
-      const night = Math.floor(this.dist / CONFIG.biomeEvery) % 4 === 3; // 4-й ландшафт — Ночь
+      const night = BIOMES[Math.floor(this.dist / CONFIG.biomeEvery) % BIOMES.length].night; // сейчас ночи нет
       const drain = (CONFIG.staminaMax / CONFIG.staminaDrainTime) *
         (this.diving ? CONFIG.diveDrainMult : this.boosting ? CONFIG.boostDrainMult : 1) *
         (night ? CONFIG.nightDrainMult : 1);
@@ -164,7 +169,7 @@ export class Game {
     this.caught[kind]++;
     if (dive) this.diveCatches++;
     if (this.free) { this.popup(`${prey.name}!`); return; }
-    this.stamina = Math.min(CONFIG.staminaMax, this.stamina + prey.stamina);
+    this.stamina = Math.min(CONFIG.staminaMax, this.stamina + prey.stamina * CONFIG.clawMult);
     this.exhausted = false;
     this.combo++;
     this.comboTimer = CONFIG.comboTime;
