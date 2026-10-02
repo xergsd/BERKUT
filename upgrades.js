@@ -15,7 +15,7 @@ const RANGE = {
   boostSpeedMult: ['boost', 1.25, 1.7],   // ускорение рывка...
   boostDrainMult: ['boost', 6, 2.5],      // ...и во сколько раз быстрее он тратит силы
   steerResponse: ['wings', 1.6, 3.4],     // повороты и набор высоты
-  diveMaxFall: ['dive', 60, 105],         // м/с — предельная скорость пике
+  diveMaxFall: ['dive', 50, 88],          // м/с — предельная скорость пике
   clawMult: ['claws', 0.7, 1.3],          // радиус захвата и силы от добычи
 };
 function valueAt(key, level) {
