@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Беркут</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #f3b07a; font-family: system-ui, sans-serif; }
@@ -108,6 +108,64 @@
                color: #fff; font: 700 14px system-ui; cursor: pointer; background: rgba(20,24,34,.55);
                border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   #pause-btn.hidden { display: none; }
+
+  /* ---------- телефон: джойстик слева, «Рывок» и «Пике» справа (touch.js) ---------- */
+  .touch-only { display: none; }
+  html.touch .touch-only { display: revert; }
+  html.touch .kbd-only { display: none; }
+  html.touch #pause-btn { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+  html.touch #hud { top: max(10px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); }
+  html.touch #score { font-size: 30px; }
+  html.touch #stamina { bottom: max(14px, env(safe-area-inset-bottom)); width: min(260px, 36vw); }
+  #touch { position: fixed; inset: 0; z-index: 10; pointer-events: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #touch.hidden { display: none; }
+  #stick-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; }
+  #stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; pointer-events: none;
+           border: 3px solid rgba(255,255,255,.7); background: rgba(255,255,255,.12); opacity: 0; transition: opacity .12s; }
+  #stick.on { opacity: 1; }
+  #stick-knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
+                background: rgba(255,255,255,.85); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+  #touch .tbtn { position: absolute; display: grid; place-items: center; border-radius: 50%; pointer-events: auto; touch-action: none;
+                 color: #fff; font: 700 13px/1.1 system-ui; text-align: center; padding: 0;
+                 background: rgba(20,24,34,.45); border: 2px solid rgba(255,255,255,.55);
+                 backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: transform .08s, background .08s; }
+  #touch .tbtn svg { display: block; width: 26px; height: 26px; margin: 0 auto 2px; }
+  #touch .tbtn.held { transform: scale(.92); background: rgba(226,177,86,.75); border-color: #fff3c4; }
+  #btn-dive { width: 96px; height: 96px; right: max(22px, env(safe-area-inset-right)); bottom: max(26px, env(safe-area-inset-bottom)); }
+  #btn-boost { width: 72px; height: 72px; right: calc(max(22px, env(safe-area-inset-right)) + 112px); bottom: max(14px, env(safe-area-inset-bottom)); }
+  /* подсказки первого полёта */
+  #tips { position: fixed; inset: 0; z-index: 25; cursor: pointer; color: #fff; }
+  #tips.hidden { display: none; }
+  #tips-ring { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; border: 4px solid #e2b156;
+               box-shadow: 0 0 0 200vmax rgba(10,14,24,.55); transition: all .25s ease; }
+  #tips-card { position: absolute; top: 18%; max-width: 300px; text-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  #tips[data-step="0"] #tips-card { right: 8%; text-align: right; }
+  #tips:not([data-step="0"]) #tips-card { left: 8%; }
+  #tips-title { font-size: 28px; font-weight: 900; }
+  #tips-text { font-size: 16px; line-height: 1.4; margin-top: 6px; }
+  #tips-next { margin-top: 14px; font-size: 13px; opacity: .7; }
+  /* телефон вертикально — просим повернуть; поверх всего, игра на паузе */
+  #rotate { display: none; position: fixed; inset: 0; z-index: 40; align-items: center; justify-content: center; flex-direction: column;
+            gap: 14px; padding: 24px; box-sizing: border-box; text-align: center; color: #fff; background: #141822; }
+  @media (orientation: portrait) { html.touch #rotate { display: flex; } }
+  #rotate svg { width: 72px; height: 72px; animation: turn 2.4s ease-in-out infinite; }
+  #rotate b { font-size: 22px; letter-spacing: .04em; }
+  #rotate span { font-size: 15px; color: #c9cfdb; max-width: 280px; }
+  /* телефон горизонтально — экран низкий: меню компактнее, главное меню в две колонки */
+  @media (max-height: 500px) {
+    .panel { padding: 14px 18px 12px; max-height: calc(100vh - 16px); }
+    #ui { padding: 8px; }
+    .panel h1 { font-size: 28px; }
+    .panel h2 { margin-bottom: 8px; }
+    .line { margin: 6px auto 10px; }
+    .panel button { min-height: 38px; margin: 5px 0; padding: 7px; }
+    .panel button.main { padding: 9px; }
+    #menu-main.active { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; width: min(100%, 480px); }
+    #menu-main h1, #menu-main .line, #menu-main .main, #menu-main .record, #menu-main .hint { grid-column: 1 / -1; }
+    .record { margin-top: 6px; }
+  }
+  @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  @media (prefers-reduced-motion: reduce) { #rotate svg { animation: none; } }
 </style>
 <!-- Three.js r128 как ES-модуль — своя копия в vendor/ (лицензия MIT там же): игра не зависит от внешних CDN.
      Аддоны (bloom и т.п.) брать той же версии и тоже класть в vendor/. -->
@@ -127,6 +185,22 @@
   <div id="popups"></div>
   <button id="pause-btn" class="ui hidden" type="button" aria-label="Пауза">❚❚</button>
 
+  <div id="touch" class="hidden">
+    <div id="stick-zone"></div>
+    <div id="stick"><div id="stick-knob"></div></div>
+    <button id="btn-boost" class="tbtn" type="button" aria-label="Рывок"><span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h9M4 7h6M4 17h6M14 6l6 6-6 6"/></svg>Рывок</span></button>
+    <button id="btn-dive" class="tbtn" type="button" aria-label="Пике"><span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v15M6 12l6 7 6-7"/></svg>Пике</span></button>
+  </div>
+  <div id="tips" class="hidden">
+    <div id="tips-ring"></div>
+    <div id="tips-card"><div id="tips-title"></div><div id="tips-text"></div><div id="tips-next">Нажми, чтобы продолжить</div></div>
+  </div>
+  <div id="rotate">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#e2b156" stroke-width="1.6" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
+    <b>Поверни телефон</b>
+    <span>Беркут летает только в горизонтальном положении: так больше видно неба и удобно держать двумя руками.</span>
+  </div>
+
   <div id="ui" class="ui">
     <section id="menu-main" class="panel">
       <h1>БЕРКУТ</h1>
@@ -139,17 +213,21 @@
       <button type="button" data-go="howto">Как играть</button>
       <button type="button" data-go="settings">Настройки</button>
       <div class="record" id="menu-best"></div>
-      <div class="hint">Пробел — играть</div>
+      <div class="hint kbd-only">Пробел — играть</div>
     </section>
 
     <section id="menu-howto" class="panel wide">
       <h2>Как играть</h2>
       <div class="howto">
         <h3>Управление</h3>
-        <p><b>Мышь, палец или WASD</b> — направление полёта</p>
-        <p><b>Shift или второй палец</b> — рывок</p>
-        <p><b>Пробел, левая кнопка мыши или палец у нижнего края</b> — пике</p>
-        <p><b>Esc или P</b> — пауза, <b>M</b> — звук</p>
+        <p class="kbd-only"><b>Мышь или WASD</b> — направление полёта</p>
+        <p class="kbd-only"><b>Shift</b> — рывок</p>
+        <p class="kbd-only"><b>Пробел или левая кнопка мыши</b> — пике</p>
+        <p class="kbd-only"><b>Esc или P</b> — пауза, <b>M</b> — звук</p>
+        <p class="touch-only"><b>Левая половина экрана</b> — зажми палец и веди: джойстик появится там, где коснулся</p>
+        <p class="touch-only"><b>Кнопка «Рывок»</b> справа — держи, чтобы лететь быстрее</p>
+        <p class="touch-only"><b>Кнопка «Пике»</b> справа — держи, чтобы нырнуть за добычей</p>
+        <p class="touch-only"><b>❚❚</b> в углу — пауза</p>
         <h3>Силы</h3>
         <p>Полоска сил тает всегда, в рывке — быстрее. Пике сил не тратит.
           Удар о землю отнимает силы, в пике — вдвое больше. Без сил беркут снижается и падает.</p>
@@ -203,7 +281,7 @@
       <div class="field"><span>Графика</span>
         <div class="seg"><button type="button" data-quality="high">Высокая</button><button type="button" data-quality="low">Низкая</button></div>
       </div>
-      <label class="field">Скорость WASD <input id="key-sens" type="range" min="50" max="200" value="100"></label>
+      <label class="field"><span class="kbd-only">Скорость WASD</span><span class="touch-only">Чувствительность</span> <input id="key-sens" type="range" min="50" max="200" value="100"></label>
       <button type="button" data-back>Назад</button>
     </section>
 
@@ -226,7 +304,7 @@
       <button class="main" type="button" data-act="restart">Ещё раз</button>
       <button type="button" class="upgrade" data-go="upgrades"></button>
       <button type="button" data-act="menu">В меню</button>
-      <div class="hint">Пробел — ещё раз</div>
+      <div class="hint kbd-only">Пробел — ещё раз</div>
     </section>
   </div>
   <script type="module" src="./main.js"></script>

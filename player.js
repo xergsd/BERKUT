@@ -69,41 +69,33 @@ export class Player {
     this.pos = new THREE.Vector3();
     this.target = { x: 0, y: 0 }; // -1..1 по обеим осям
     this.keys = new Set();
-    this.touches = 0;
     this.mouseDown = false; // левая кнопка мыши — пике
-    this.keySens = 1;       // множитель скорости WASD из настроек
+    this.keySens = 1;       // множитель скорости WASD и джойстика из настроек
+    this.touch = null;      // TouchControls (touch.js) — джойстик и кнопки на телефоне, ставит main.js
 
     const onPointer = (cx, cy) => {
       this.target.x = (cx / innerWidth - 0.5) * 2;
       this.target.y = (cy / innerHeight - 0.5) * 2;
     };
     const isControl = (e) => e.target?.closest?.('.ui'); // меню и кнопка паузы
-    dom.addEventListener('mousemove', (e) => { if (!isControl(e)) onPointer(e.clientX, e.clientY); });
-    dom.addEventListener('touchmove', (e) => {
-      if (isControl(e)) return;
-      const t = Array.from(e.touches).find((touch) => !touch.target?.closest?.('.ui'));
-      if (t) onPointer(t.clientX, t.clientY);
-    }, { passive: true });
-    const onTouches = (e) => { this.touches = Array.from(e.touches).filter((t) => !t.target?.closest?.('.ui')).length; };
-    dom.addEventListener('touchstart', onTouches, { passive: true });
-    dom.addEventListener('touchend', onTouches, { passive: true });
-    dom.addEventListener('touchcancel', onTouches, { passive: true });
+    // только настоящая мышь: касания управляются джойстиком, а не точкой под пальцем
+    dom.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !isControl(e)) onPointer(e.clientX, e.clientY); });
     dom.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button === 0 && !isControl(e)) this.mouseDown = true; });
     addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse' && e.button === 0) this.mouseDown = false; });
     addEventListener('keydown', (e) => { if (!isControl(e)) this.keys.add(e.code); });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.touches = 0; this.mouseDown = false; });
+    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; });
     this.reset();
   }
 
-  // рывок: Shift или второй палец на экране
+  // рывок: Shift или кнопка «Рывок» на телефоне
   get boostHeld() {
-    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.touches >= 2;
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || !!this.touch?.boost;
   }
 
-  // пике: пробел, левая кнопка мыши или палец у нижнего края экрана
+  // пике: пробел, левая кнопка мыши или кнопка «Пике» на телефоне
   get diveHeld() {
-    return this.keys.has('Space') || this.mouseDown || (this.touches >= 1 && this.target.y >= CONFIG.diveTouchEdge);
+    return this.keys.has('Space') || this.mouseDown || !!this.touch?.dive;
   }
 
   reset() {
@@ -185,6 +177,15 @@ export class Player {
     if (k.has('ArrowRight') || k.has('KeyD')) this.target.x += v;
     if (k.has('ArrowUp') || k.has('KeyW')) this.target.y -= v;
     if (k.has('ArrowDown') || k.has('KeyS')) this.target.y += v;
+    // джойстик: чем дальше палец от центра, тем быстрее; отпустил — по горизонтали плавно к центру,
+    // высота остаётся (чтобы держаться низко, не нужно всё время тянуть палец вниз)
+    const t = this.touch;
+    if (t?.held) {
+      const dead = (a) => Math.sign(a) * Math.max(0, Math.abs(a) - CONFIG.touchDeadZone) / (1 - CONFIG.touchDeadZone);
+      const tv = CONFIG.touchSpeed * this.keySens * dt;
+      this.target.x += dead(t.stick.x) * tv;
+      this.target.y += dead(t.stick.y) * tv;
+    } else if (t) this.target.x -= this.target.x * Math.min(1, CONFIG.touchRecenter * dt);
     this.target.x = THREE.MathUtils.clamp(this.target.x, -1, 1);
     this.target.y = THREE.MathUtils.clamp(this.target.y, -1, 1);
 

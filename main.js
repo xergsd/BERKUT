@@ -13,6 +13,7 @@ import { Menu } from './menu.js';
 import { Effects } from './effects.js';
 import { Progress } from './upgrades.js';
 import { applySkin } from './skins.js';
+import { IS_TOUCH, TouchControls, TouchTips } from './touch.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -30,6 +31,11 @@ const critters = new Critters(scene, world);
 // скалы не должны загораживать подлёт ни к какой добыче
 world.extraTargets = () => [...prey.kids, ...critters.targets()];
 const player = new Player(scene, window);
+// телефон: джойстик и кнопки вместо «палец = точка, куда лететь»
+document.documentElement.classList.toggle('touch', IS_TOUCH);
+const touch = IS_TOUCH ? new TouchControls() : null;
+const tips = IS_TOUCH ? new TouchTips() : null;
+player.touch = touch;
 const game = new Game();
 const fx = createPostFX(renderer, scene, camera);
 const sound = new FlightAudio();
@@ -60,6 +66,12 @@ function startRun(mode) {
   resetWorld();
   game.start(mode);
   menu.hide();
+  // первый полёт на телефоне: игра стоит, пока не покажем джойстик и обе кнопки
+  if (tips && !tips.seen) {
+    game.paused = true;
+    touch.setVisible(true);
+    tips.start(() => { game.paused = false; });
+  }
 }
 
 function toMenu() {
@@ -122,6 +134,9 @@ const pauseBtn = document.getElementById('pause-btn');
 pauseBtn.addEventListener('click', () => setPaused(true));
 // ушли со вкладки — пауза
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+// телефон повернули вертикально — пауза (поверх всего экран «Поверни телефон»)
+const portrait = matchMedia('(orientation: portrait)');
+portrait.addEventListener?.('change', () => { if (IS_TOUCH && portrait.matches) setPaused(true); });
 
 addEventListener('pointerdown', () => sound.unlock());
 addEventListener('keydown', (e) => {
@@ -180,6 +195,7 @@ function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // первый кадр может прийти «раньше» last
   last = now;
   pauseBtn.classList.toggle('hidden', game.state !== 'playing' || game.paused);
+  touch?.setVisible(game.state === 'playing' && (!game.paused || tips.step >= 0));
   if (game.paused) { // мир замер, звук полёта затих
     sound.update({ active: false });
     fx.render();
