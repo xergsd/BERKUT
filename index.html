@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- с экрана «Домой» игра открывается на весь экран, без адресной строки и вкладок -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Беркут</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #f3b07a; font-family: system-ui, sans-serif; }
@@ -30,7 +34,7 @@
   #ui { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px;
         box-sizing: border-box; background: radial-gradient(ellipse at center, rgba(10,14,24,.1), rgba(10,14,24,.45)); }
   #ui.hidden { display: none; }
-  .panel { display: none; box-sizing: border-box; width: min(100%, 340px); max-height: calc(100vh - 32px); overflow: auto;
+  .panel { display: none; box-sizing: border-box; width: min(100%, 340px); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto;
            padding: 26px 26px 20px; border-radius: 16px; text-align: center; color: #fff;
            background: rgba(20,24,34,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
            border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
@@ -153,13 +157,29 @@
   #rotate span { font-size: 15px; color: #c9cfdb; max-width: 280px; }
   /* телефон горизонтально — экран низкий: меню компактнее, главное меню в две колонки */
   @media (max-height: 500px) {
-    .panel { padding: 14px 18px 12px; max-height: calc(100vh - 16px); }
-    #ui { padding: 8px; }
-    .panel h1 { font-size: 28px; }
-    .panel h2 { margin-bottom: 8px; }
-    .line { margin: 6px auto 10px; }
-    .panel button { min-height: 38px; margin: 5px 0; padding: 7px; }
-    .panel button.main { padding: 9px; }
+    /* верх панели не прятать под адресную строку: 100vh в Safari выше видимой части */
+    .panel { padding: 12px 16px 10px; max-height: calc(100vh - 12px); max-height: calc(100dvh - 12px); border-radius: 12px; }
+    #ui { padding: 6px; }
+    .panel h1 { font-size: 24px; }
+    .panel h2 { margin-bottom: 6px; font-size: 17px; }
+    .line { margin: 4px auto 8px; }
+    .panel button { min-height: 34px; margin: 4px 0; padding: 6px; font-size: 13px; border-radius: 8px; }
+    .panel button.main { padding: 7px; font-size: 14px; }
+    .panel.wide { width: min(100%, 600px); }
+    .up-balance { margin: -2px 0 6px; font-size: 12px; }
+    .up-card { padding: 5px 0; gap: 10px; }
+    .up-title { font-size: 13px; }
+    .up-about { font-size: 11.5px; }
+    .panel .up-card button { min-height: 30px; min-width: 96px; padding: 5px 8px; font-size: 12px; }
+    .howto { font-size: 12.5px; line-height: 1.45; }
+    .howto h3 { margin-top: 8px; font-size: 11.5px; }
+    .field { margin: 6px 0; font-size: 13px; }
+    .big { font-size: 32px; }
+    .badge { margin-bottom: 4px; }
+    .stats { margin-top: 6px; font-size: 12.5px; line-height: 1.5; }
+    .hint { font-size: 11px; margin-top: 4px; }
+    .panel.map { width: min(100%, 520px); }
+    #map-svg { max-height: 48vh; max-height: 48dvh; }
     #menu-main.active { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; width: min(100%, 480px); }
     #menu-main h1, #menu-main .line, #menu-main .main, #menu-main .record, #menu-main .hint { grid-column: 1 / -1; }
     .record { margin-top: 6px; }
