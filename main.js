@@ -10,7 +10,7 @@ import { Nature } from './nature.js';
 import { Prey } from './prey.js';
 import { Critters } from './critters.js';
 import { Menu } from './menu.js';
-import { Effects } from './effects.js';
+import { Effects, WindStreaks } from './effects.js';
 import { Progress } from './upgrades.js';
 import { applySkin } from './skins.js';
 import { IS_TOUCH, TouchControls, TouchTips } from './touch.js';
@@ -40,6 +40,7 @@ const game = new Game();
 const fx = createPostFX(renderer, scene, camera);
 const sound = new FlightAudio();
 const effects = new Effects(scene);
+const wind = new WindStreaks(scene); // полосы ветра в пике
 let camShake = 0; // 0..1 — толчок камеры при поимке
 prey.onBleat = (side) => { if (game.state === 'playing') sound.bleat(side); };
 
@@ -247,7 +248,7 @@ function loop(now) {
   // камера сзади и чуть сверху
   const p = player.pos;
   camCarry += ((player.carryT > 0 ? 1 : 0) - camCarry) * Math.min(1, dt * 3);
-  camTarget.set(p.x * 0.7, p.y + 11 - camCarry * 5, p.z + cameraDistance());
+  camTarget.set(p.x * 0.7, p.y + 11 - camCarry * 5, p.z + cameraDistance() - camDive * CONFIG.diveCamClose); // в пике — ближе
   camSkin += ((menu.current === 'skins' ? 1 : 0) - camSkin) * Math.min(1, dt * 3);
   // следы от кончиков крыльев при осмотре выглядят как белые линии — прячем
   trails ??= scene.getObjectByName('berkut-wing-trails');
@@ -266,7 +267,14 @@ function loop(now) {
     camera.position.y += (Math.random() - 0.5) * 0.6 * camShake;
     camShake = Math.max(0, camShake - dt / 0.35);
   }
-  camDive += (Math.min(1, Math.max(0, -player.vy / CONFIG.diveMaxFall)) - camDive) * Math.min(1, dt * 4);
+  camDive += (Math.min(1, Math.max(0, -player.vy / CONFIG.diveMaxFall)) - camDive) * Math.min(1, dt * 6);
+  const diveShake = Math.max(0, camDive - 0.5) * 2 * CONFIG.diveShake; // тряска с середины разгона пике
+  if (diveShake > 0) {
+    camera.position.x += (Math.random() - 0.5) * diveShake;
+    camera.position.y += (Math.random() - 0.5) * diveShake;
+  }
+  // полосы ветра — только в забеге и не в окне «Облик»
+  wind.update(dt, p, dt > 0 ? step / dt : 0, player.vy, game.state === 'playing' ? camDive * (1 - camSkin) : 0);
   camLook.set(p.x * 0.85, p.y + 1 - camDive * 8, p.z - 30);
   // точка взгляда сдвинута так, что беркут оказывается справа от панели
   if (camSkin > 0.001) {
@@ -279,7 +287,7 @@ function loop(now) {
   }
   camera.lookAt(camLook);
   // во время рывка и пике угол обзора плавно расширяется
-  const targetFov = (game.state === 'playing' && game.boosting ? 68 : 62) + camDive * 12 - camShake * 5; // при поимке — короткое сужение
+  const targetFov = (game.state === 'playing' && game.boosting ? 68 : 62) + camDive * CONFIG.diveFov - camShake * 5; // при поимке — короткое сужение
   if (Math.abs(camera.fov - targetFov) > 0.01) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();

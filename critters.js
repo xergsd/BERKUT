@@ -204,6 +204,8 @@ export class Critters {
     [...h.fawns, ...h.adults].forEach((m, i) => {
       m.userData.offset = spots[i];
       m.userData.state = 'live';
+      // коридор без скал — на весь путь бега и под всё стадо (world.protectHuntingLane)
+      Object.assign(m.userData, { laneAhead: CONFIG.herdLaneAhead, laneWide: CONFIG.herdLaneWide });
       m.visible = true;
     });
     this.placeHerdMembers(h, 0);
@@ -240,7 +242,10 @@ export class Critters {
     for (const c of this.colonies) for (const g of c.gerbils) if (g.userData.state === 'live') this.animateGerbil(g, dt);
     for (const h of this.herds) {
       if (h.state === 'none') continue;
-      if (h.state === 'graze' && p.z - h.z > 0 && p.z - h.z < CONFIG.herdStartDist) h.state = 'run';
+      if (h.state === 'graze' && p.z - h.z > 0 && p.z - h.z < CONFIG.herdStartDist) {
+        h.state = 'run';
+        this.protectLanes(); // стадо сорвалось — ещё раз убираем скалы с его пути
+      }
       if (h.state === 'run') h.z -= CONFIG.herdSpeed * dt;
       this.placeHerdMembers(h, dt);
     }

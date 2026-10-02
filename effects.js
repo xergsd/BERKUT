@@ -1,5 +1,6 @@
-// effects.js — короткие эффекты поимки: пыль с земли или скалы, разлетающиеся перья птиц
+// effects.js — короткие эффекты поимки: пыль с земли или скалы, разлетающиеся перья птиц; полосы ветра в пике
 import * as THREE from 'three';
+import { CONFIG } from './config.js';
 
 const DUST = 14, FEATHERS = 12;
 const DUST_COLOR = { marmot: '#b89a6e', ibex: '#9aa3ab', gerbil: '#d6b27a', hare: '#8a7a5a', gazelle: '#d8cdb8' };
@@ -88,5 +89,67 @@ export class Effects {
       f.rotation.x += u.spin.x * dt; f.rotation.y += u.spin.y * dt; f.rotation.z += u.spin.z * dt;
       f.material.opacity = Math.min(1, u.life / 0.5);
     }
+  }
+}
+
+// ---------- полосы ветра в пике ----------
+// Тонкие светлые черты вокруг беркута летят навстречу и вверх — воздух проносится мимо падающей птицы.
+// Координаты черт — относительно беркута; рядом с ним (ближе STREAK_MIN м) их нет, чтобы не мешать смотреть.
+const STREAKS = 48, STREAK_MIN = 5, STREAK_SPREAD = 12;
+const _dir = new THREE.Vector3();
+
+export class WindStreaks {
+  constructor(scene) {
+    const g = new THREE.BufferGeometry();
+    this.positions = new Float32Array(STREAKS * 6);
+    this.fade = new Float32Array(STREAKS * 2); // у головы черты — яркость, у хвоста — 0
+    g.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('fade', new THREE.BufferAttribute(this.fade, 1).setUsage(THREE.DynamicDrawUsage));
+    this.material = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { opacity: { value: 0 }, color: { value: new THREE.Color('#f4f8ff') } },
+      vertexShader: `attribute float fade; varying float vFade;
+        void main() { vFade = fade; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float opacity; uniform vec3 color; varying float vFade;
+        void main() { gl_FragColor = vec4(color, opacity * vFade); }`,
+    });
+    this.lines = new THREE.LineSegments(g, this.material);
+    this.lines.frustumCulled = false; this.lines.renderOrder = 3; this.lines.visible = false;
+    scene.add(this.lines);
+    this.streaks = Array.from({ length: STREAKS }, () => ({ x: 0, y: 0, z: 0, k: 1 }));
+    this.ready = false;
+  }
+
+  // anywhere — по всей глубине (первое появление), иначе — далеко впереди;
+  // чем быстрее падение, тем ниже появляются: оттуда их несёт вверх
+  spawn(s, anywhere, fall) {
+    const a = Math.random() * Math.PI * 2, r = STREAK_MIN + Math.random() * STREAK_SPREAD;
+    s.x = Math.cos(a) * r;
+    s.y = Math.sin(a) * r * 0.8 - fall * 12;
+    s.z = anywhere ? -10 - Math.random() * 70 : -60 - Math.random() * 25;
+    s.k = 0.6 + Math.random() * 0.8;
+  }
+
+  // eagle — позиция беркута, speed — скорость вперёд, vy — вертикальная (в пике < 0), amount — 0..1 сила эффекта
+  update(dt, eagle, speed, vy, amount) {
+    this.material.uniforms.opacity.value = CONFIG.diveWind * amount;
+    this.lines.visible = amount > 0.02;
+    if (!this.lines.visible) { this.ready = false; return; }
+    const fall = Math.min(1, Math.max(0, -vy / CONFIG.diveMaxFall));
+    if (!this.ready) { for (const s of this.streaks) this.spawn(s, true, fall); this.ready = true; }
+    _dir.set(0, -vy, speed); // воздух относительно беркута: навстречу и вверх
+    const v = _dir.length() || 1;
+    _dir.divideScalar(v);
+    const p = this.positions;
+    this.streaks.forEach((s, i) => {
+      s.z += speed * dt; s.y -= vy * dt;
+      if (s.z > 12 || s.y > 22) this.spawn(s, false, fall); // пролетела мимо камеры
+      const len = s.k * (3 + v * 0.07), j = i * 6;
+      p[j] = eagle.x + s.x; p[j + 1] = eagle.y + s.y; p[j + 2] = eagle.z + s.z;
+      p[j + 3] = p[j] - _dir.x * len; p[j + 4] = p[j + 1] - _dir.y * len; p[j + 5] = p[j + 2] - _dir.z * len;
+      this.fade[i * 2] = Math.min(1, (s.z + 85) / 30); // далёкие проявляются постепенно
+    });
+    this.lines.geometry.attributes.position.needsUpdate = true;
+    this.lines.geometry.attributes.fade.needsUpdate = true;
   }
 }

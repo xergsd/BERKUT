@@ -206,12 +206,14 @@ export class World {
 
   // Flight is toward -Z: 110 m before prey, 85 m after, 28 m wide.
   // Include the entire formation (also rubble), plus the eagle's collision radius.
+  // Бегущей добыче (стаду джейранов) коридор шире и длиннее: userData.laneAhead, laneWide.
   protectHuntingLane(r) {
-    const b=r.userData.bounds, pad=14+CONFIG.eagleRadius;
+    const b=r.userData.bounds;
     const intervals=[];
     for(const m of [...this.marmots, ...(this.extraTargets?.() ?? [])]) {
       if(!m.visible || m.userData.state==='none')continue;
-      if(r.position.z+b.max.z < m.position.z-85-CONFIG.eagleRadius ||
+      const pad=14+(m.userData.laneWide??0)+CONFIG.eagleRadius;
+      if(r.position.z+b.max.z < m.position.z-85-(m.userData.laneAhead??0)-CONFIG.eagleRadius ||
          r.position.z+b.min.z > m.position.z+110+CONFIG.eagleRadius)continue;
       intervals.push([m.position.x-pad-b.max.x,m.position.x+pad-b.min.x]);
     }
@@ -333,7 +335,8 @@ export class World {
     for (const r of this.rocks) {
       if (r.position.z > playerPos.z + 30) {
         const farthest = Math.min(...this.rocks.map((k) => k.position.z));
-        this.placeRock(r, farthest - rockSpacing(dist) * (0.8 + Math.random() * 0.4), playerPos.x, dist);
+        const density = BIOMES[biomeAt(farthest)].rocks.density ?? 1; // в Мангистау скалы реже
+        this.placeRock(r, farthest - rockSpacing(dist) / density * (0.8 + Math.random() * 0.4), playerPos.x, dist);
       }
     }
   }

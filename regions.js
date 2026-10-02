@@ -8,7 +8,8 @@
 //   fog, skyTop, skyMid, sun — небо; ground — 4 цвета земли от низа к верху (низина, склон, скала, снег)
 //   rocks    — скалы (rocks.js): color, tall (высота столбов), profile (форма столба: crag | mesa | peak),
 //              bands (полосы пород), snow (снег на вершинах), moss (цвет на пологих гранях или null),
-//              shelves (полки у подножия, как в Чарыне), kinds (доли арок / валунов / расколотых столбов, остальное — гребни)
+//              shelves (полки у подножия, как в Чарыне), kinds (доли арок / валунов / расколотых столбов, остальное — гребни),
+//              density (плотность скал: 1 — как везде, 0.5 — вдвое реже; по умолчанию 1)
 //   flora    — растительность (nature.js): grass (цвета), grassShare (доля травы), flowers, stone (цвет камней),
 //              tree (leaf | pine | saxaul | null), treeSize, crown (цвет кроны), bush (цвет кустов)
 //   prey     — добыча: marmot — world.js; keklik, ibex — prey.js; hare, ular, gerbil, gazelle — critters.js; null — нет
@@ -65,7 +66,8 @@ export const REGIONS = [
   { id: 'mangystau', name: 'Мангистау', map: [54.5, 43.4], relief: 'mangystau', strata: 1,
     fog: '#eee4d4', skyTop: '#5a86b0', skyMid: '#e8dcc8', sun: '#fff4dc',
     ground: ['#d8cdb8', '#efe8dc', '#f3ede2', '#ffffff'],
-    rocks: { color: '#e6ddcc', tall: 30, profile: 'mesa', bands: true, shelves: true, kinds: [0.22, 0.34, 0.70] },
+    rocks: { color: '#e6ddcc', tall: 30, profile: 'mesa', bands: true, shelves: true, kinds: [0.22, 0.34, 0.70],
+      density: 0.5 }, // столы огромные — иначе к стаду джейранов не подлететь
     flora: { grass: ['#b9b48a', '#c9c29a', '#a8a47a'], grassShare: 0.2, flowers: false, stone: '#d8d0c0',
       tree: null, treeSize: 0, crown: '#8a9a6a', bush: '#a8a07a' },
     prey: 'gazelle' },

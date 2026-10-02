@@ -214,8 +214,8 @@ export class Player {
     // отскок после удара о землю: какое-то время снижаться нельзя
     if (this.bounceT > 0) { this.bounceT -= dt; ty = Math.max(ty, this.bounceY); diving = false; }
     if (diving) {
-      // пике: падение разгоняется, высота мыши не важна
-      this.vy = Math.max(-CONFIG.diveMaxFall, this.vy - CONFIG.diveAccel * dt);
+      // пике: срыв вниз сразу с diveKick, дальше падение разгоняется; высота мыши не важна
+      this.vy = Math.max(-CONFIG.diveMaxFall, Math.min(this.vy, -CONFIG.diveKick) - CONFIG.diveAccel * dt);
       this.zoom = Math.min(1, -this.vy / CONFIG.diveMaxFall);
       this.pos.y += this.vy * dt;
     } else {
